@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable
 
 from . import seed as _seed
 from .types import Effect
@@ -59,12 +61,25 @@ AMBIGUOUS_NAMES: dict[str, list[str]] = {
 DEFAULT_CHANNEL = "SLACK_CHANNEL_ID"
 
 
+#: Enumerates candidate orders for a time window. Returns
+#: [{"order_id": str, "amount_cents": int, "created": datetime}, ...].
+OrderResolver = Callable[[datetime], list[dict]]
+
+#: Orders reserved for the eval harness, never included in a bulk enumeration.
+EVAL_ORDER_LOW, EVAL_ORDER_HIGH = 9001, 9020
+
+_UNIT_DAYS = {"day": 1, "week": 7, "month": 30}
+
+
 @dataclass
 class PlanResult:
     """Either a list of effects, or a refusal with a reason."""
 
     effects: list[Effect] = field(default_factory=list)
     refusal: str | None = None
+    #: Free-form detail the Slack layer surfaces on a hold: the enumerated
+    #: window, how many eval-range orders were excluded, the dollar total.
+    enumeration: dict[str, Any] = field(default_factory=dict)
 
     @property
     def refused(self) -> bool:
@@ -74,6 +89,17 @@ class PlanResult:
 # -- request shapes ---------------------------------------------------------
 
 _REFUND_RE = re.compile(r"\brefund\b.*?\border\s+(?P<order>\d{3,})", re.IGNORECASE | re.DOTALL)
+#: Bulk refund over a TIME WINDOW: "refund everything from last week",
+#: "refund all orders from the last 14 days". Distinct from the explicit-list
+#: shape below because the target set is not named -- it has to be enumerated
+#: from the provider before anyone can judge the blast radius.
+_WINDOW_REFUND_RE = re.compile(
+    r"\brefund\b[^.]*?\b(?:everything|all|every)\b[^.]*?\bfrom\b\s+"
+    r"(?:the\s+)?(?:last|past|previous)\s+"
+    r"(?:(?P<count>\d+)\s+)?(?P<unit>day|days|week|weeks|month|months)\b",
+    re.IGNORECASE,
+)
+
 #: Bulk refund of an explicit order list: "Refund orders 4419, 4417 and 9001 in
 #: full." Named orders only -- an unbounded phrasing is caught by the risk gate
 #: before this ever matters. Emits one refund per order and NO audit/Slack
@@ -98,11 +124,26 @@ _REPRICE_RE = re.compile(
 )
 
 
-def plan_request(request: str) -> PlanResult:
-    """Map a request to effects, or refuse."""
+def plan_request(request: str, order_resolver: OrderResolver | None = None) -> PlanResult:
+    """Map a request to effects, or refuse.
+
+    `order_resolver` is how the time-window shape enumerates its targets. It is
+    injected rather than imported so this module stays pure and offline by
+    default: with no resolver the window shape produces zero effects and says
+    why, which is exactly what the eval harness and the unit tests see. Only
+    the Slack app supplies a live, READ-ONLY Stripe reader.
+    """
     text = (request or "").strip()
     if not text:
         return PlanResult(refusal="Empty request.")
+
+    match = _WINDOW_REFUND_RE.search(text)
+    if match:
+        return _plan_window_refund(
+            count=int(match.group("count") or 1),
+            unit=match.group("unit").lower().rstrip("s"),
+            resolver=order_resolver,
+        )
 
     match = _BULK_REFUND_RE.search(text)
     if match:
@@ -172,6 +213,85 @@ def _plan_refund(order_id: str, request: str) -> PlanResult:
                 idempotency_key=f"slack:post:refund-order-{order_id}",
             ),
         ]
+    )
+
+
+def _plan_window_refund(
+    count: int, unit: str, resolver: OrderResolver | None
+) -> PlanResult:
+    """Enumerate every refundable order in a time window, concretely.
+
+    The point of this shape is that the risk gate cannot judge "everything from
+    last week" without knowing what everything IS. So the window is resolved to
+    actual order ids and actual amounts first, and the gate is then handed a
+    plan it can weigh. The reply names the ids rather than a count, because
+    "would refund 14 orders" is not something a human can sanity-check and
+    "would refund 4417, 4418, ..., totalling $1,240.00" is.
+
+    Enumeration is READ-ONLY. Nothing here writes.
+    """
+    days = _UNIT_DAYS[unit] * max(count, 1)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    window = f"last {count} {unit}{'s' if count != 1 else ''}"
+
+    if resolver is None:
+        # Offline: no provider to enumerate against. Zero effects, and the risk
+        # gate still holds the request on unbounded scope.
+        return PlanResult(
+            refusal=(
+                f"Refunding {window} needs a live enumeration of the orders in that "
+                f"window, and no order resolver is configured. Refusing rather than "
+                f"guessing the blast radius."
+            ),
+            enumeration={"window": window, "since": since.isoformat(), "resolved": False},
+        )
+
+    candidates = resolver(since)
+
+    excluded = [
+        c for c in candidates
+        if str(c["order_id"]).isdigit()
+        and EVAL_ORDER_LOW <= int(c["order_id"]) <= EVAL_ORDER_HIGH
+    ]
+    included = [c for c in candidates if c not in excluded]
+
+    total_cents = sum(int(c["amount_cents"]) for c in included)
+    order_ids = [str(c["order_id"]) for c in included]
+
+    enumeration = {
+        "window": window,
+        "since": since.isoformat(),
+        "resolved": True,
+        "order_ids": order_ids,
+        "total_cents": total_cents,
+        "excluded_eval_orders": [str(c["order_id"]) for c in excluded],
+        "excluded_count": len(excluded),
+    }
+
+    if not included:
+        return PlanResult(
+            refusal=(
+                f"No refundable orders found in the {window} "
+                f"({len(excluded)} eval-range order(s) excluded)."
+            ),
+            enumeration=enumeration,
+        )
+
+    return PlanResult(
+        effects=[
+            Effect(
+                app="stripe",
+                action="refund_payment",
+                params={
+                    "order_id": str(c["order_id"]),
+                    "amount_cents": int(c["amount_cents"]),
+                    "reason": f"bulk refund, {window}",
+                },
+                idempotency_key=f"stripe:refund:order-{c['order_id']}",
+            )
+            for c in included
+        ],
+        enumeration=enumeration,
     )
 
 

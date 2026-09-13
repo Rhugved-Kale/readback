@@ -51,6 +51,7 @@ def run(
     write_receipt: bool = True,
     readback: bool = True,
     approved_by: str | None = None,
+    order_resolver=None,
 ) -> Receipt:
     """Execute one request end to end and return its receipt.
 
@@ -78,7 +79,7 @@ def run(
     before = _snapshots(adapters)
 
     # -- plan ------------------------------------------------------------
-    plan = plan_request(request_text)
+    plan = plan_request(request_text, order_resolver=order_resolver)
     receipt.planned = [effect.to_dict() for effect in plan.effects]
 
     # -- risk gate -------------------------------------------------------
@@ -186,7 +187,15 @@ def run(
         receipt.verifications.append(
             Verification(
                 app=effect.app,
-                action=effect.action,
+                # The label must name the same operation the detail describes.
+                # verify() reports under the adapter's CANONICAL action name
+                # (update_price), while the planner still emits the older alias
+                # (create_price) -- so labelling from effect.action produced a
+                # row reading "stripe.create_price" above a detail saying
+                # "stripe.update_price". Ask the adapter, which is where the
+                # detail came from. Adapters without an alias table (the fakes)
+                # return the action unchanged, so the frozen eval is untouched.
+                action=_canonical_action(adapter, effect),
                 effect_id=effect.id,
                 passed=passed,
                 detail=detail,
@@ -344,6 +353,17 @@ def _notify_manual_remediation(adapters: Mapping[str, Any], receipt: Receipt) ->
         notify("\n".join(lines))
     except BaseException:  # noqa: BLE001
         pass
+
+
+def _canonical_action(adapter: Any, effect: Effect) -> str:
+    """The action name the adapter itself uses when reporting on this effect."""
+    canonical = getattr(adapter, "canonical", None)
+    if canonical is None:
+        return effect.action
+    try:
+        return canonical(effect.action)
+    except Exception:  # noqa: BLE001 - labelling must never break a run
+        return effect.action
 
 
 def _adapter_for(adapters: Mapping[str, Any], effect: Effect):

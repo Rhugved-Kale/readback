@@ -9,8 +9,8 @@ to judge intent.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Iterable
+from dataclasses import dataclass, field
+from typing import Any, Iterable
 
 from ..types import Effect
 
@@ -52,6 +52,12 @@ class Decision:
 
     verdict: str
     reason: str
+    #: EVERY rule the plan crosses, not just the first one that fired.
+    #: `reason` stays the primary rule so existing callers and the frozen eval
+    #: read exactly what they always did; this is additive. A human approving a
+    #: hold needs to see all of it -- "unbounded scope" alone hides that the
+    #: same plan is also 14 effects and $1,400.
+    crossed: list[str] = field(default_factory=list)
 
     @property
     def allowed(self) -> bool:
@@ -61,39 +67,47 @@ class Decision:
     def held(self) -> bool:
         return self.verdict == HOLD
 
-    def to_dict(self) -> dict[str, str]:
-        return {"verdict": self.verdict, "reason": self.reason}
+    def to_dict(self) -> dict[str, Any]:
+        return {"verdict": self.verdict, "reason": self.reason, "crossed": self.crossed}
 
 
 def evaluate(request: str, effects: Iterable[Effect]) -> Decision:
-    """Hold on unbounded scope, too many effects, or too much money."""
+    """Hold on unbounded scope, too many effects, or too much money.
+
+    Collects EVERY crossed rule but keeps `reason` as the first one, in the
+    documented precedence order (scope, then count, then money). Callers that
+    only read `reason` behave exactly as before.
+    """
     effects = list(effects)
+    total_cents = sum(effect.money_cents for effect in effects)
+    crossed: list[str] = []
 
     for pattern in _COMPILED:
         match = pattern.search(request or "")
         if match:
-            return Decision(
-                HOLD,
+            crossed.append(
                 f"Unbounded scope: the request says {match.group(0)!r}, which names no "
-                f"enumerable set of records. A human must supply the explicit list.",
+                f"enumerable set of records. A human must supply the explicit list."
             )
+            break
 
     if len(effects) > MAX_EFFECTS:
-        return Decision(
-            HOLD,
+        crossed.append(
             f"Record-count limit: the plan plans {len(effects)} effects, over the "
-            f"limit of {MAX_EFFECTS}.",
+            f"limit of {MAX_EFFECTS}."
         )
 
-    total_cents = sum(effect.money_cents for effect in effects)
     if total_cents > MAX_MONEY_CENTS:
-        return Decision(
-            HOLD,
+        crossed.append(
             f"Money limit: the plan moves ${total_cents / 100:,.2f}, over the limit of "
-            f"${MAX_MONEY_CENTS / 100:,.2f}.",
+            f"${MAX_MONEY_CENTS / 100:,.2f}."
         )
+
+    if crossed:
+        return Decision(HOLD, crossed[0], crossed=crossed)
 
     return Decision(
         ALLOW,
         f"{len(effects)} effect(s), ${total_cents / 100:,.2f} moved; within all limits.",
+        crossed=[],
     )

@@ -17,7 +17,9 @@ import os
 import re
 import threading
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable
 
 from .core.receipt import (
@@ -46,6 +48,18 @@ _DECISION_RE = re.compile(r"^\s*(approve|cancel)\s+(?P<run_id>[\w-]+)\s*$", re.I
 
 ACTION_APPROVE = "readback_approve"
 ACTION_CANCEL = "readback_cancel"
+ACTION_CONFIRM = "readback_confirm"
+
+#: How many event ids to remember for deduplication.
+DEDUPE_CAPACITY = 1000
+
+#: Refund count above which a single Approve click is not enough.
+DOUBLE_CONFIRM_REFUNDS = 5
+
+#: Column widths for the receipt's call table. Slack threads are narrow and a
+#: code block does not wrap gracefully -- it breaks columns apart mid-row -- so
+#: every line is built to fit rather than relying on the client.
+_ACTION_WIDTH = 22
 
 
 @dataclass
@@ -58,6 +72,20 @@ class HeldRun:
     thread_ts: str
     gate_reason: str
     requester: str
+    effects: list = field(default_factory=list)
+    enumeration: dict = field(default_factory=dict)
+    crossed: list = field(default_factory=list)
+    #: Set once a human has clicked Approve on a large refund plan and is being
+    #: asked to confirm the dollar total.
+    awaiting_confirmation: bool = False
+
+    @property
+    def refund_count(self) -> int:
+        return sum(1 for e in self.effects if e.action == "refund_payment")
+
+    @property
+    def total_cents(self) -> int:
+        return sum(getattr(e, "money_cents", 0) for e in self.effects)
 
 
 @dataclass
@@ -69,6 +97,9 @@ class SlackApp:
     bot_user_id: str = ""
     runner: Callable[..., Receipt] = run_request
     root: str = "runs"
+    #: READ-ONLY Stripe enumeration for time-window refunds. None keeps the
+    #: planner offline.
+    order_resolver: Callable[[datetime], list[dict]] | None = None
 
     #: One run at a time. Ops writes against three live systems should never
     #: interleave: two concurrent repricings would each verify a world the
@@ -77,7 +108,43 @@ class SlackApp:
     _in_flight: str | None = field(default=None, init=False)
     _held: dict[str, HeldRun] = field(default_factory=dict, init=False)
 
+    #: Bounded LRU of Slack event ids already handled.
+    #:
+    #: Slack redelivers event envelopes -- the same logical event arrives more
+    #: than once, with a different envelope_id. Without this, one message was
+    #: being planned and executed twice; the concurrency guard sometimes caught
+    #: the second one, which MASKED the bug rather than fixing it (and when the
+    #: first run had already finished, nothing caught it at all).
+    #:
+    #: Keyed on event_id, falling back to client_msg_id, falling back to
+    #: channel+ts, because a retry preserves all three while envelope_id
+    #: changes.
+    _seen: OrderedDict = field(default_factory=OrderedDict, init=False)
+    _seen_lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _debug: Callable[[str], None] = print
+
     # -- entry points ------------------------------------------------------
+
+    def handle_envelope(self, payload: dict) -> str | None:
+        """Entry point for an Events API payload, with deduplication.
+
+        The envelope is acknowledged by the caller BEFORE this runs, so a slow
+        run cannot trigger Slack's 3-second retry.
+        """
+        event = (payload or {}).get("event", {}) or {}
+        key = _dedupe_key(payload, event)
+
+        if key is not None:
+            with self._seen_lock:
+                if key in self._seen:
+                    self._seen.move_to_end(key)
+                    self._debug(f"[dedupe] ignoring repeat delivery of {key}")
+                    return "ignored:duplicate"
+                self._seen[key] = True
+                while len(self._seen) > DEDUPE_CAPACITY:
+                    self._seen.popitem(last=False)
+
+        return self.handle_message(event)
 
     def handle_message(self, event: dict) -> str | None:
         """Route one Slack message event. Returns a short status for tests."""
@@ -129,30 +196,40 @@ class SlackApp:
             self._in_flight = run_id
 
         try:
-            plan = plan_request(request)
+            plan = plan_request(request, order_resolver=self.order_resolver)
+
+            # The GATE is consulted before the planner's refusal, matching the
+            # runner. A request the gate holds must be reported as held even
+            # when the planner could not build a plan for it -- otherwise
+            # "refund everything from last week" comes back as a parse failure
+            # and the risk rule that actually applies is never shown.
+            gate = riskgate.evaluate(request, plan.effects)
+
+            if gate.held:
+                self._post(thread_ts, _plan_message(run_id, request, plan.effects, plan.enumeration))
+                self._held[run_id] = HeldRun(
+                    run_id=run_id, request=request, channel=self.channel,
+                    thread_ts=thread_ts, gate_reason=gate.reason, requester=user,
+                    effects=list(plan.effects), enumeration=plan.enumeration,
+                    crossed=list(gate.crossed),
+                )
+                self._post_blocks(
+                    thread_ts,
+                    text=f"Held for approval — run {run_id}",
+                    blocks=_hold_blocks(run_id, gate, plan.effects, plan.enumeration),
+                )
+                return "held"
 
             if plan.refused or not plan.effects:
                 reason = plan.refusal or "The planner produced no effects for this request."
                 self._post(thread_ts, f"*Refused* — run `{run_id}`\n>{reason}")
                 return "refused:planner"
 
-            self._post(thread_ts, _plan_message(run_id, request, plan.effects))
-
-            gate = riskgate.evaluate(request, plan.effects)
-            if gate.held:
-                self._held[run_id] = HeldRun(
-                    run_id=run_id, request=request, channel=self.channel,
-                    thread_ts=thread_ts, gate_reason=gate.reason, requester=user,
-                )
-                self._post_blocks(
-                    thread_ts,
-                    text=f"Held for approval — run {run_id}",
-                    blocks=_hold_blocks(run_id, gate.reason, plan.effects),
-                )
-                return "held"
+            self._post(thread_ts, _plan_message(run_id, request, plan.effects, plan.enumeration))
 
             receipt = self.runner(
-                request, adapters=self._adapters(run_id), run_id=run_id, root=self.root
+                request, adapters=self._adapters(run_id), run_id=run_id, root=self.root,
+                order_resolver=self.order_resolver,
             )
             self._post(thread_ts, _receipt_message(receipt))
             return f"ran:{receipt.outcome}"
@@ -180,6 +257,25 @@ class SlackApp:
             )
             return "cancelled"
 
+        # A large refund plan takes TWO deliberate clicks. Refunds are
+        # irreversible: one stray tap on a phone should not be able to move
+        # real money across a dozen customers. The second prompt names the
+        # dollar total, because "Approve" alone does not tell you what you are
+        # approving.
+        if (
+            decision == "approve"
+            and not held.awaiting_confirmation
+            and held.refund_count > DOUBLE_CONFIRM_REFUNDS
+        ):
+            held.awaiting_confirmation = True
+            self._held[run_id] = held
+            self._post_blocks(
+                held.thread_ts,
+                text=f"Confirm {held.refund_count} refunds — run {run_id}",
+                blocks=_confirm_blocks(run_id, held),
+            )
+            return "awaiting-confirmation"
+
         self._held.pop(run_id, None)
         try:
             self._post(
@@ -192,6 +288,7 @@ class SlackApp:
                 run_id=run_id,
                 root=self.root,
                 approved_by=f"slack:{user}",
+                order_resolver=self.order_resolver,
             )
             self._post(held.thread_ts, _receipt_message(receipt))
             return f"approved:{receipt.outcome}"
@@ -259,26 +356,82 @@ def _clean_request(text: str, bot_user_id: str) -> str:
     return text.strip()
 
 
-def _plan_message(run_id: str, request: str, effects: list) -> str:
+def _dedupe_key(payload: dict, event: dict) -> str | None:
+    """Stable identity for a Slack event across redeliveries.
+
+    envelope_id deliberately NOT used: it changes on every retry, which is
+    exactly the case this has to catch.
+    """
+    event_id = (payload or {}).get("event_id")
+    if event_id:
+        return f"event:{event_id}"
+    client_msg_id = event.get("client_msg_id")
+    if client_msg_id:
+        return f"client:{client_msg_id}"
+    channel, ts = event.get("channel"), event.get("ts")
+    if channel and ts:
+        return f"chants:{channel}:{ts}"
+    return None
+
+
+def _money(cents: int) -> str:
+    return f"${cents / 100:,.2f}"
+
+
+def _plan_message(run_id: str, request: str, effects: list, enumeration: dict | None = None) -> str:
     lines = [f"*Plan for run* `{run_id}`", f">{request}", ""]
+    if not effects:
+        lines.append("_No effects planned._")
     for index, effect in enumerate(effects, 1):
         lines.append(f"{index}. `{effect.app}` · *{effect.action}*")
+
+    enumeration = enumeration or {}
+    if enumeration.get("resolved"):
+        excluded = enumeration.get("excluded_count", 0)
+        lines += [
+            "",
+            f"_Enumerated {len(enumeration.get('order_ids', []))} order(s) from the "
+            f"{enumeration.get('window')}, totalling "
+            f"{_money(enumeration.get('total_cents', 0))}._",
+        ]
+        if excluded:
+            lines.append(
+                f"_Excluded {excluded} eval-range order(s) "
+                f"({', '.join(enumeration.get('excluded_eval_orders', []))}) — "
+                f"reserved for the eval harness._"
+            )
     return "\n".join(lines)
 
 
-def _hold_blocks(run_id: str, gate_reason: str, effects: list) -> list:
+def _hold_blocks(run_id: str, gate, effects: list, enumeration: dict | None = None) -> list:
+    enumeration = enumeration or {}
+    total_cents = sum(getattr(e, "money_cents", 0) for e in effects)
+    order_ids = enumeration.get("order_ids") or [
+        str(e.params.get("order_id")) for e in effects if e.params.get("order_id")
+    ]
+
+    crossed = gate.crossed or [gate.reason]
+    body = [
+        f":warning: *Held by the risk gate* — run `{run_id}`",
+        "",
+        f"*Rule{'s' if len(crossed) > 1 else ''} crossed ({len(crossed)}):*",
+    ]
+    body += [f"• {rule}" for rule in crossed]
+    body += ["", f"*Would refund {len(order_ids)} order(s), total {_money(total_cents)}:*"]
+    if order_ids:
+        body.append("`" + "`, `".join(order_ids) + "`")
+    else:
+        body.append("_none enumerated_")
+
+    if enumeration.get("excluded_count"):
+        body.append(
+            f"_Excluded {enumeration['excluded_count']} eval-range order(s): "
+            f"{', '.join(enumeration.get('excluded_eval_orders', []))}._"
+        )
+    body += ["", "*Nothing has been applied.*"]
+
     return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": (
-                    f":warning: *Held by the risk gate* — run `{run_id}`\n"
-                    f"*Rule:* {gate_reason}\n"
-                    f"*Plan:* {len(effects)} effect(s). Nothing has been applied."
-                ),
-            },
-        },
+        {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(body)}},
         {
             "type": "actions",
             "block_id": f"readback_gate:{run_id}",
@@ -320,6 +473,59 @@ _OUTCOME_HEADER = {
 }
 
 
+def _confirm_blocks(run_id: str, held: HeldRun) -> list:
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f":rotating_light: *Second confirmation required* — run `{run_id}`\n"
+                    f"This approves *{held.refund_count} refunds* totalling "
+                    f"*{_money(held.total_cents)}*.\n"
+                    f"Refunds cannot be undone. Confirm only if that total is right."
+                ),
+            },
+        },
+        {
+            "type": "actions",
+            "block_id": f"readback_confirm:{run_id}",
+            "elements": [
+                {
+                    "type": "button",
+                    "style": "danger",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"Yes, refund {_money(held.total_cents)}",
+                    },
+                    "action_id": ACTION_CONFIRM,
+                    "value": run_id,
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Cancel"},
+                    "action_id": ACTION_CANCEL,
+                    "value": run_id,
+                },
+            ],
+        },
+    ]
+
+
+def _call_row(call) -> str:
+    """One provider call on one line, built to fit a narrow Slack thread.
+
+    Status first because it is what the eye scans for, then the action, then
+    the latency right-aligned. Long action names are truncated rather than
+    allowed to wrap: a wrapped row breaks the columns apart and makes the whole
+    block unreadable, which is what it was doing before.
+    """
+    action = f"{call.app}.{call.action}"
+    if len(action) > _ACTION_WIDTH:
+        action = action[: _ACTION_WIDTH - 1] + "\u2026"
+    return f"{call.status[:11]:<11} {action:<{_ACTION_WIDTH}} {call.latency_ms:>8.1f}ms"
+
+
 def _receipt_message(receipt: Receipt) -> str:
     lines = [
         f"{_OUTCOME_HEADER.get(receipt.outcome, receipt.outcome.upper())} — run `{receipt.run_id}`",
@@ -333,15 +539,17 @@ def _receipt_message(receipt: Receipt) -> str:
         )
 
     if receipt.calls:
-        lines += ["", "*Provider calls*", "```"]
-        for call in receipt.calls:
-            lines.append(
-                f"{call.status:<13} {call.phase:<11} {call.app}.{call.action:<22} "
-                f"{call.latency_ms:8.1f}ms"
-            )
-            if call.error:
-                lines.append(f"              error: {call.error[:110]}")
-        lines.append("```")
+        for phase in ("apply", "compensate"):
+            phase_calls = [c for c in receipt.calls if c.phase == phase]
+            if not phase_calls:
+                continue
+            lines += ["", f"*Provider calls — {phase}*", "```"]
+            for call in phase_calls:
+                lines.append(_call_row(call))
+            lines.append("```")
+            for call in phase_calls:
+                if call.error:
+                    lines.append(f"> `{call.app}.{call.action}` — {call.error[:150]}")
 
     if receipt.verifications:
         lines += ["", "*Read-back assertions*"]
@@ -369,6 +577,58 @@ def _receipt_message(receipt: Receipt) -> str:
 # -- Socket Mode transport ---------------------------------------------------
 
 
+def _live_order_resolver():
+    """READ-ONLY enumeration of refundable PaymentIntents since a timestamp.
+
+    Lists rather than searches: Stripe's search index lags writes, and an
+    enumeration that silently omits a recent order would understate the blast
+    radius of a bulk refund -- the one number a human is being asked to judge.
+
+    Results are memoised per window for the life of one request so the plan
+    post and the runner's own re-plan do not both pay for the scan.
+    """
+    import stripe as stripe_sdk
+
+    cache: dict[str, list[dict]] = {}
+
+    def resolve(since: datetime) -> list[dict]:
+        key = since.isoformat()
+        if key in cache:
+            return cache[key]
+
+        stripe_sdk.api_key = os.environ["STRIPE_SECRET_KEY"]
+        found: list[dict] = []
+        scanned = 0
+        for intent in stripe_sdk.PaymentIntent.list(
+            limit=100, created={"gte": int(since.timestamp())}
+        ).auto_paging_iter():
+            scanned += 1
+            if scanned > 500:
+                break
+            if intent.status != "succeeded":
+                continue
+            meta = intent.metadata.to_dict() if hasattr(intent.metadata, "to_dict") else {}
+            order_id = meta.get("order_id")
+            if not order_id:
+                continue
+            refunded = sum(
+                int(r.amount)
+                for r in stripe_sdk.Refund.list(payment_intent=intent.id, limit=100).data
+                if r.status == "succeeded"
+            )
+            if refunded:
+                continue  # already refunded; nothing left to refund
+            found.append({
+                "order_id": str(order_id),
+                "amount_cents": int(intent.amount_received or intent.amount),
+                "created": intent.created,
+            })
+        cache[key] = found
+        return found
+
+    return resolve
+
+
 def main() -> int:
     from dotenv import load_dotenv
     from slack_sdk import WebClient
@@ -390,6 +650,7 @@ def main() -> int:
         client=web,
         channel=os.environ["SLACK_CHANNEL_ID"],
         bot_user_id=identity["user_id"],
+        order_resolver=_live_order_resolver(),
     )
 
     socket = SocketModeClient(
@@ -405,17 +666,17 @@ def main() -> int:
             if req.type == "events_api":
                 event = (req.payload or {}).get("event", {}) or {}
                 if event.get("type") in ("message", "app_mention"):
-                    app.handle_message(event)
+                    app.handle_envelope(req.payload or {})
                 return
 
             if req.type == "interactive":
                 payload = req.payload or {}
                 for action in payload.get("actions", []) or []:
                     action_id = action.get("action_id")
-                    if action_id not in (ACTION_APPROVE, ACTION_CANCEL):
+                    if action_id not in (ACTION_APPROVE, ACTION_CANCEL, ACTION_CONFIRM):
                         continue
                     app.handle_decision(
-                        "approve" if action_id == ACTION_APPROVE else "cancel",
+                        "cancel" if action_id == ACTION_CANCEL else "approve",
                         action.get("value", ""),
                         user=(payload.get("user") or {}).get("id", "someone"),
                     )

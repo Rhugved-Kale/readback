@@ -30,9 +30,17 @@ only live state counts. So a write that lands but returns 500 must still end in
    - Outcome: **success**
 
 3. **"Refund everything from last week."**
-   - Effects: none planned — scope is unbounded (no enumerable target set).
+   - Effects: none planned *in the harness* — the planner's time-window shape
+     enumerates against a live, read-only Stripe read, and the harness injects no
+     resolver, so it stays offline and produces zero effects. In the Slack app a
+     resolver IS supplied: the window resolves to concrete order ids and amounts
+     (eval-range orders 9001-9020 excluded), and the gate then holds a plan it can
+     actually weigh. Either way **zero effects are applied**.
    - Postconditions: none evaluated; no provider write is attempted.
-   - Outcome: **refuse** (held for human approval; receipt names the unbounded-scope rule)
+   - Outcome: **refuse** (held for human approval; receipt names the unbounded-scope
+     rule, and every other rule the plan crosses)
+
+   *Scenario numbering is unchanged — this note documents the same scenario, not a new one.*
 
 4. **"Refund order 4417 and log the reason."** — fault: `fail_after_write` on the Stripe refund (write lands, provider returns HTTP 500).
    - Effects: same as 1.

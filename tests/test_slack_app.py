@@ -10,7 +10,13 @@ from __future__ import annotations
 import pytest
 
 from readback.core.receipt import OUTCOME_HELD, OUTCOME_SUCCESS, ProviderCall, Receipt, Verification
-from readback.slack_app import ACTION_APPROVE, ACTION_CANCEL, SlackApp
+from readback.slack_app import (
+    ACTION_APPROVE,
+    ACTION_CANCEL,
+    ACTION_CONFIRM,
+    SlackApp,
+    _call_row,
+)
 
 CHANNEL = "C_TEST"
 BOT = "U_BOT"
@@ -71,7 +77,17 @@ def app():
     # only thing that would use them.
     application = SlackApp(client=client, channel=CHANNEL, bot_user_id=BOT, runner=runner)
     application._adapters = lambda run_id: {}
+    application._debug = lambda msg: None
     return application, client, runner
+
+
+def _envelope(text, event_id="Ev123", user="U_HUMAN", channel=CHANNEL, **extra):
+    return {
+        "event_id": event_id,
+        "event": {"type": "message", "text": text, "user": user,
+                  "channel": channel, "ts": "111.0",
+                  "client_msg_id": "cmid-1", **extra},
+    }
 
 
 def _msg(text, user="U_HUMAN", channel=CHANNEL, **extra):
@@ -222,3 +238,185 @@ def test_unparseable_request_is_refused_not_executed(app):
     assert status == "refused:planner"
     assert runner.calls == []
     assert "Refused" in client.texts[0]
+
+
+# -- FIX 1: event deduplication ---------------------------------------------
+
+
+def test_duplicate_envelope_produces_one_plan_and_one_execution(app):
+    """Slack redelivers events. The second delivery must do nothing at all."""
+    application, client, runner = app
+    envelope = _envelope("readback: Refund order 4417 and log the reason.")
+
+    first = application.handle_envelope(envelope)
+    second = application.handle_envelope(envelope)
+
+    assert first.startswith("ran:"), first
+    assert second == "ignored:duplicate"
+
+    assert len(runner.calls) == 1, "the duplicate must not execute a second time"
+    plans = [p for p in client.posts if "Plan for run" in p.get("text", "")]
+    assert len(plans) == 1, "exactly one plan post"
+    receipts = [p for p in client.posts if "SUCCESS" in p.get("text", "")]
+    assert len(receipts) == 1, "exactly one receipt post"
+
+
+def test_dedupe_is_not_the_concurrency_guard(app):
+    """A repeat AFTER the first run finished must still be ignored.
+
+    The in-flight lock releases when a run completes, so it cannot catch a late
+    redelivery. Only the event id can.
+    """
+    application, _client, runner = app
+    envelope = _envelope("readback: Refund order 4417 and log the reason.")
+
+    application.handle_envelope(envelope)
+    assert application._in_flight is None, "run finished; the guard is no longer armed"
+
+    assert application.handle_envelope(envelope) == "ignored:duplicate"
+    assert len(runner.calls) == 1
+
+
+def test_dedupe_falls_back_through_client_msg_id_then_channel_ts(app):
+    application, _client, runner = app
+
+    no_event_id = {"event": {"type": "message", "text": "readback: Refund order 4417 and log the reason.",
+                             "user": "U_HUMAN", "channel": CHANNEL, "ts": "222.0",
+                             "client_msg_id": "cmid-xyz"}}
+    assert application.handle_envelope(no_event_id).startswith("ran:")
+    assert application.handle_envelope(no_event_id) == "ignored:duplicate"
+
+    bare = {"event": {"type": "message", "text": "readback: Refund order 4418 and log the reason.",
+                      "user": "U_HUMAN", "channel": CHANNEL, "ts": "333.0"}}
+    assert bare["event"].get("client_msg_id") is None
+    assert application.handle_envelope(bare).startswith("ran:")
+    assert application.handle_envelope(bare) == "ignored:duplicate"
+
+    assert len(runner.calls) == 2
+
+
+def test_distinct_events_are_not_deduped(app):
+    application, _client, runner = app
+    application.handle_envelope(_envelope("readback: Refund order 4417 and log the reason.",
+                                          event_id="EvA"))
+    application.handle_envelope(_envelope("readback: Refund order 4418 and log the reason.",
+                                          event_id="EvB", client_msg_id="cmid-2"))
+    assert len(runner.calls) == 2
+
+
+def test_dedupe_cache_is_bounded(app):
+    application, _client, _runner = app
+    for n in range(1300):
+        application.handle_envelope(
+            {"event_id": f"Ev{n}", "event": {"type": "message", "text": "hi",
+                                             "user": "U_HUMAN", "channel": CHANNEL,
+                                             "ts": f"{n}.0"}}
+        )
+    assert len(application._seen) <= 1000
+    assert len(application._seen) >= 500
+
+
+# -- FIX 2: the window shape reaches the risk gate ---------------------------
+
+
+def _resolver(since):
+    return [
+        {"order_id": "4417", "amount_cents": 9900, "created": since},
+        {"order_id": "4418", "amount_cents": 2900, "created": since},
+        {"order_id": "4419", "amount_cents": 24900, "created": since},
+        {"order_id": "9001", "amount_cents": 9900, "created": since},
+        {"order_id": "9002", "amount_cents": 9900, "created": since},
+        {"order_id": "5501", "amount_cents": 45000, "created": since},
+    ]
+
+
+def test_refund_everything_hits_the_gate_not_the_planner(app):
+    application, client, runner = app
+    application.order_resolver = _resolver
+
+    status = application.handle_message(_msg("readback: Refund everything from last week."))
+
+    assert status == "held", status
+    assert runner.calls == [], "nothing may be applied"
+    assert not any("no known request shape" in t.lower() for t in client.texts)
+
+    body = " ".join(
+        b["text"]["text"] for b in client.blocks() if b["type"] == "section"
+    )
+    assert "Held by the risk gate" in body
+    assert "Unbounded scope" in body          # the rule that fired
+    assert "Money limit" in body              # every OTHER rule crossed
+    assert "over the limit of $500.00" in body  # the threshold
+    for order in ("4417", "4418", "4419", "5501"):
+        assert order in body                  # the exact order ids
+    assert "$827.00" in body                  # the dollar total
+    assert "9001" in body and "Excluded" in body  # eval range named as excluded
+
+    actions = [b for b in client.blocks() if b["type"] == "actions"]
+    assert {e["action_id"] for e in actions[0]["elements"]} == {ACTION_APPROVE, ACTION_CANCEL}
+
+
+def test_window_refund_excludes_eval_range_from_the_plan(app):
+    application, _client, _runner = app
+    application.order_resolver = _resolver
+    application.handle_message(_msg("readback: Refund everything from last week."))
+    held = next(iter(application._held.values()))
+    ids = {e.params["order_id"] for e in held.effects}
+    assert ids == {"4417", "4418", "4419", "5501"}
+    assert held.enumeration["excluded_eval_orders"] == ["9001", "9002"]
+
+
+def test_large_refund_plan_needs_a_second_confirmation(app):
+    """One Approve click must not be able to fire six irreversible refunds."""
+    application, client, runner = app
+    application.order_resolver = lambda since: [
+        {"order_id": str(4400 + n), "amount_cents": 9900, "created": since}
+        for n in range(6)
+    ]
+    application.handle_message(_msg("readback: Refund everything from last week."))
+    run_id = next(iter(application._held))
+
+    first = application.handle_decision("approve", run_id, user="U_BOSS")
+    assert first == "awaiting-confirmation"
+    assert runner.calls == [], "first Approve must not execute a 6-refund plan"
+
+    confirm = [b for b in client.blocks() if b["type"] == "actions"][-1]
+    ids = {e["action_id"] for e in confirm["elements"]}
+    assert ACTION_CONFIRM in ids
+    body = " ".join(b["text"]["text"] for b in client.blocks() if b["type"] == "section")
+    assert "$594.00" in body, "the second prompt must name the dollar total"
+
+    second = application.handle_decision("approve", run_id, user="U_BOSS")
+    assert second.startswith("approved:")
+    assert len(runner.calls) == 1
+
+
+def test_small_refund_plan_executes_on_first_approve(app):
+    application, _client, runner = app
+    application.order_resolver = lambda since: [
+        {"order_id": "4417", "amount_cents": 60000, "created": since}
+    ]
+    application.handle_message(_msg("readback: Refund everything from last week."))
+    run_id = next(iter(application._held))
+    assert application.handle_decision("approve", run_id, user="U_BOSS").startswith("approved:")
+    assert len(runner.calls) == 1
+
+
+# -- FIX 3: receipt formatting ----------------------------------------------
+
+
+def test_call_rows_are_fixed_width_and_truncated(app):
+    from readback.core.receipt import ProviderCall
+
+    short = ProviderCall(phase="apply", app="slack", action="post_message",
+                         effect_id="e", idempotency_key="k", status="ok", latency_ms=9.5)
+    longer = ProviderCall(phase="apply", app="notion", action="update_catalog_price_and_more",
+                          effect_id="e", idempotency_key="k", status="irreversible",
+                          latency_ms=1234.5)
+
+    rows = [_call_row(short), _call_row(longer)]
+    assert len({len(r) for r in rows}) == 1, "every row must be the same width"
+    assert all(len(r) <= 46 for r in rows), "rows must fit a narrow Slack thread"
+    assert "\u2026" in rows[1], "long action names truncate, never wrap"
+    assert rows[0].startswith("ok"), "status leads the row"
+    assert rows[0].rstrip().endswith("ms")
