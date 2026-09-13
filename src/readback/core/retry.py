@@ -56,10 +56,16 @@ class Attempt:
     http_status: int | None = None
     error: str | None = None
     slept_ms: float = 0.0
+    #: Which provider call this was. One Effect can span several distinct calls
+    #: (create price, promote to default, archive old); without this label the
+    #: receipt shows three separate "attempt 1" lines and reads like a retry
+    #: loop that never advanced.
+    op: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "attempt": self.number,
+            "op": self.op,
             "status": self.status,
             "latency_ms": round(self.latency_ms, 2),
             "http_status": self.http_status,
@@ -147,6 +153,32 @@ def backoff_delay(attempt_number: int, rng: random.Random | None = None) -> floa
     return raw * (1.0 - JITTER * rng.random())
 
 
+def merge(*outcomes: "Outcome") -> "Outcome":
+    """Combine the histories of several calls made for ONE effect.
+
+    Attempts are renumbered sequentially across the whole effect, so a receipt
+    reads 1,2,3 for three distinct provider calls rather than three separate
+    attempt-1 lines that look like a stalled retry.
+    """
+    merged: list[Attempt] = []
+    for outcome in outcomes:
+        if outcome is None:
+            continue
+        for attempt in outcome.attempts:
+            merged.append(
+                Attempt(
+                    number=len(merged) + 1,
+                    status=attempt.status,
+                    latency_ms=attempt.latency_ms,
+                    http_status=attempt.http_status,
+                    error=attempt.error,
+                    slept_ms=attempt.slept_ms,
+                    op=attempt.op,
+                )
+            )
+    return Outcome(ok=all(o.ok for o in outcomes if o is not None), attempts=merged)
+
+
 def call(
     fn: Callable[[], Any],
     *,
@@ -179,6 +211,7 @@ def call(
                 latency_ms=latency,
                 http_status=status,
                 error=f"{type(exc).__name__}: {exc}",
+                op=op,
             )
 
             if retryable and not last:
@@ -197,7 +230,7 @@ def call(
             )
 
         latency = (time.perf_counter() - started) * 1000.0
-        attempts.append(Attempt(number=number, status="ok", latency_ms=latency))
+        attempts.append(Attempt(number=number, status="ok", latency_ms=latency, op=op))
         return Outcome(ok=True, value=value, attempts=attempts)
 
     # Unreachable: the loop either returns or exhausts into the last-attempt

@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from . import seed as _seed
 from .types import Effect
 
 #: Catalog known to the planner. Mirrors what seed.py writes to Stripe/Notion.
@@ -34,7 +35,21 @@ CATALOG: dict[str, dict] = {
 }
 
 #: Order ID -> amount in cents. Mirrors the payments seed.py creates.
-KNOWN_ORDERS: dict[str, int] = {"4417": 9900, "4418": 2900, "4419": 24900}
+#:
+#: 4417-4419 are the demo orders. 9001-9020 are the test/eval range, all at the
+#: same amount -- the live suite and the eval harness refund those and never the
+#: demo ones, because a refund cannot be undone. The range bounds are imported
+#: from seed.py rather than repeated, so the two cannot drift apart and leave
+#: the planner refusing an order the seed just created.
+KNOWN_ORDERS: dict[str, int] = {
+    "4417": 9900,
+    "4418": 2900,
+    "4419": 24900,
+    **{
+        str(n): _seed.TEST_ORDER_AMOUNT_CENTS
+        for n in range(_seed.TEST_ORDER_LOW, _seed.TEST_ORDER_HIGH + 1)
+    },
+}
 
 #: Names that match more than one catalog entry and must never be guessed.
 AMBIGUOUS_NAMES: dict[str, list[str]] = {

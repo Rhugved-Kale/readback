@@ -14,9 +14,29 @@ produces the same table.
 What it does:
   1. Stripe   create four products with monthly USD recurring prices
   2. Notion   write each new Stripe price ID into the existing Catalog rows
-  3. Stripe   create three refundable test payments, one per order ID
+  3. Stripe   create refundable test payments, one per order ID
   4. Slack    post a completion message (the Slack smoke test)
   5. print a table of everything touched
+
+ORDER ID RANGES -- THE RULE
+===========================
+  4417, 4418, 4419   DEMO ONLY. Reserved for the demo video. Nothing automated
+                     may touch them: not the live test suite, not the eval
+                     harness, not a scratch run. A refund is irreversible, so
+                     a test that burns a demo order costs a re-shoot, and
+                     `python -m readback.reset` has to rebuild it by hand.
+
+  9001-9020          TEST/EVAL ONLY. The live suite and the eval harness use
+                     this range exclusively. Create them with:
+
+                         python -m readback.seed --orders 9001-9020
+
+                     20 refundable PaymentIntents at $99 each. Burn them
+                     freely; re-run the command to replenish.
+
+The separation exists because refunds cannot be undone. Demo state must survive
+being tested against, and the only way to guarantee that is to never point a
+test at it.
 """
 
 from __future__ import annotations
@@ -40,6 +60,55 @@ PRODUCTS: list[tuple[str, str, int]] = [
 ORDER_AMOUNTS: dict[str, int] = {"4417": 9900, "4418": 2900, "4419": 24900}
 
 DEFAULT_ORDERS: list[str] = ["4417", "4418", "4419"]
+
+#: Reserved for the demo video. See the module docstring: never used by tests.
+DEMO_ORDERS: frozenset[str] = frozenset({"4417", "4418", "4419"})
+
+#: The range the live suite and eval harness draw from.
+TEST_ORDER_LOW, TEST_ORDER_HIGH = 9001, 9020
+
+#: Every 9xxx test order is the same amount, so a test never has to look up
+#: which order is worth what.
+TEST_ORDER_AMOUNT_CENTS = 9900
+
+
+def expand_orders(tokens: list[str]) -> list[str]:
+    """Expand `--orders` tokens, supporting `9001-9020` range syntax.
+
+    Ranges are inclusive. Singles and ranges can be mixed:
+        --orders 9001-9020
+        --orders 4417 4418 9005-9007
+    """
+    out: list[str] = []
+    for token in tokens:
+        token = token.strip()
+        if "-" in token:
+            low_s, _, high_s = token.partition("-")
+            try:
+                low, high = int(low_s), int(high_s)
+            except ValueError:
+                raise SystemExit(f"bad --orders range {token!r}; expected e.g. 9001-9020")
+            if high < low:
+                raise SystemExit(f"bad --orders range {token!r}; high is below low")
+            out.extend(str(n) for n in range(low, high + 1))
+        else:
+            out.append(token)
+    # De-duplicate, preserving order.
+    seen: set[str] = set()
+    return [o for o in out if not (o in seen or seen.add(o))]
+
+
+def amount_for(order_id: str) -> int | None:
+    """Amount in cents for an order, or None if it is not a known order.
+
+    Orders inside the reserved test range all default to the same amount, so
+    `--orders 9001-9020` needs no per-order configuration.
+    """
+    if order_id in ORDER_AMOUNTS:
+        return ORDER_AMOUNTS[order_id]
+    if order_id.isdigit() and TEST_ORDER_LOW <= int(order_id) <= TEST_ORDER_HIGH:
+        return TEST_ORDER_AMOUNT_CENTS
+    return None
 
 #: Notion Catalog column that receives the Stripe price ID.
 PRICE_ID_COLUMN = "Stripe Price ID"
@@ -227,11 +296,11 @@ def seed_payments(stripe, orders: list[str], report: SeedReport) -> None:
     repeatable.
     """
     for order_id in orders:
-        amount = ORDER_AMOUNTS.get(order_id)
+        amount = amount_for(order_id)
         if amount is None:
             report.orders.append(
                 {"order_id": order_id, "payment_intent": "-", "amount": "-",
-                 "status": "SKIPPED: no amount configured for this order"}
+                 "status": "SKIPPED: not a known demo order or 9001-9020 test order"}
             )
             continue
 
@@ -343,9 +412,15 @@ def main(argv: list[str] | None = None) -> int:
         nargs="+",
         default=DEFAULT_ORDERS,
         metavar="ORDER_ID",
-        help=f"order IDs to create payments for (default: {' '.join(DEFAULT_ORDERS)})",
+        help=(
+            f"order IDs to create payments for; supports ranges like 9001-9020 "
+            f"(default: {' '.join(DEFAULT_ORDERS)}). "
+            f"{TEST_ORDER_LOW}-{TEST_ORDER_HIGH} is the test/eval range; "
+            f"{', '.join(sorted(DEMO_ORDERS))} are reserved for the demo."
+        ),
     )
     args = parser.parse_args(argv)
+    orders = expand_orders(list(args.orders))
 
     load_dotenv()
     env = _require_env(
@@ -364,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
     report = SeedReport()
     resolved = seed_products(stripe_sdk, report)
     seed_notion(notion, env["NOTION_CATALOG_DB"], resolved, report)
-    seed_payments(stripe_sdk, list(args.orders), report)
+    seed_payments(stripe_sdk, orders, report)
     seed_slack(slack, env["SLACK_CHANNEL_ID"], report)
     print_report(report)
     return 0

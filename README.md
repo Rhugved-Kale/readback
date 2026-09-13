@@ -20,6 +20,29 @@ The CLI and the default test run use in-memory fake adapters: no network, no cre
 Add `--live` to run against real Stripe/Notion/Slack (requires `.env`, spends real
 money, posts publicly). The live tests are deselected by default — `pytest -m live`.
 
+## Order ID ranges — the rule
+
+| Range | Who may touch it |
+| --- | --- |
+| `4417`, `4418`, `4419` | **Demo only.** Reserved for the demo video. No test, no eval run, no scratch run. |
+| `9001`–`9020` | **Test/eval only.** The live suite and the eval harness use this range exclusively. |
+
+```bash
+python -m readback.seed --orders 9001-9020
+```
+
+Creates 20 refundable $99 test-mode PaymentIntents. Burn them freely and re-run
+to replenish. The separation exists because **refunds cannot be undone** — a test
+pointed at a demo order costs a re-shoot.
+
+```bash
+python -m readback.reset
+```
+
+Restores demo starting state (Pro back to $99, catalog and audit log cleaned,
+recent bot messages removed, spent demo orders replaced) so a take can be
+repeated. Safe to run repeatedly.
+
 ## Layout
 
 | Path | What it is |
@@ -35,6 +58,7 @@ money, posts publicly). The live tests are deselected by default — `pytest -m 
 | `src/readback/core/runner.py` | plan → gate → apply → read back → compensate |
 | `src/readback/core/receipt.py` | JSON + text run receipts |
 | `src/readback/seed.py` | Real-API seed script (run manually) |
+| `src/readback/reset.py` | Restores demo starting state between takes |
 
 ## TODO
 

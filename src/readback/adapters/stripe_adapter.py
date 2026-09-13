@@ -15,6 +15,8 @@ something it did not.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from typing import Any
 
@@ -24,6 +26,126 @@ from ..core import retry
 from ..types import STATUS_OK, Effect, EffectResult, IrreversibleEffect
 from .base import Adapter
 from .live_base import LiveAdapter
+
+
+#: How many objects a list-fallback will page through before giving up. Bounded
+#: so a miss degrades into a clear error instead of walking an entire account.
+FALLBACK_SCAN_LIMIT = 500
+
+
+def find_product_by_key(client, product_key: str, expand: list[str] | None = None):
+    """Find a product by metadata product_key and return AUTHORITATIVE fields.
+
+    Two distinct Stripe consistency problems, two distinct answers, and neither
+    is a sleep:
+
+    1. MISS. Stripe's search index is asynchronous, so an object created seconds
+       ago is routinely absent from Product.search -- which returns an empty
+       page rather than an error. Fallback: a paginated Product.list filtered
+       client-side. list reads the primary store and is immediately consistent.
+       It costs more calls, which is why it is second rather than first.
+
+    2. STALE HIT. Worse and less obvious: search can RETURN the object while
+       serving an out-of-date copy of it. A product repriced moments ago comes
+       back with its previous default_price, and no amount of re-reading the
+       search index fixes it -- observed here still stale on the third attempt,
+       over a second after the write. Sleeping longer is just a guess about
+       someone else's indexing latency.
+
+       So search/list is used ONLY to resolve product_key -> product id, which
+       never changes. Every field value comes from Product.retrieve on that id,
+       which reads the primary store. That is the difference between "the index
+       thinks Team costs $249" and "Team costs $249".
+
+    `expand` is in retrieve form (e.g. ["default_price"]).
+    """
+    search_expand = [f"data.{e}" for e in expand] if expand else None
+
+    product_id = None
+    kwargs: dict[str, Any] = {"query": f"metadata['product_key']:'{product_key}'", "limit": 1}
+    if search_expand:
+        kwargs["expand"] = search_expand
+    hits = client.Product.search(**kwargs).data
+    if hits:
+        product_id = hits[0].id
+    else:
+        list_kwargs: dict[str, Any] = {"limit": 100}
+        scanned = 0
+        for candidate in client.Product.list(**list_kwargs).auto_paging_iter():
+            scanned += 1
+            if scanned > FALLBACK_SCAN_LIMIT:
+                break
+            if _meta(candidate).get("product_key") == product_key:
+                product_id = candidate.id
+                break
+
+    if product_id is None:
+        return None
+
+    # Authoritative read. Never trust the search copy's field values.
+    retrieve_kwargs: dict[str, Any] = {}
+    if expand:
+        retrieve_kwargs["expand"] = expand
+    return client.Product.retrieve(product_id, **retrieve_kwargs)
+
+
+def find_payment_intents_by_order(client, order_id: str) -> list:
+    """All PaymentIntents carrying metadata order_id. Search first, list fallback.
+
+    Same reason as find_product_by_key: a PaymentIntent created by the seed or
+    by reset.py is not immediately in the search index, and the live tests run
+    right after creating their fixtures.
+    """
+    hits = client.PaymentIntent.search(
+        query=f"metadata['order_id']:'{order_id}'", limit=100
+    ).data
+    if hits:
+        return list(hits)
+
+    found = []
+    scanned = 0
+    for intent in client.PaymentIntent.list(limit=100).auto_paging_iter():
+        scanned += 1
+        if scanned > FALLBACK_SCAN_LIMIT:
+            break
+        if _meta(intent).get("order_id") == str(order_id):
+            found.append(intent)
+    return found
+
+
+def idem_key(effect_key: str, op: str, body: dict) -> str:
+    """Stripe idempotency key bound to both the logical write AND the body.
+
+    Stripe remembers a key together with the exact body it was first used with,
+    for 24 hours, and answers any reuse with a different body with a 400 rather
+    than a replay. A key derived only from the logical write therefore becomes a
+    liability the moment the request shape changes: every run for the next day
+    fails on a key poisoned by the previous code's body. That is not
+    hypothetical -- it is what happened here when run_id was dropped from the
+    metadata.
+
+    Hashing the body fixes both directions at once:
+      * same logical write, same body  -> same key, so a retry after a crash or
+        a timeout is still absorbed upstream, which is the property that
+        matters;
+      * body changes at all            -> new key, so a schema change can never
+        collide with a key the old code already spent.
+    """
+    digest = hashlib.sha256(
+        json.dumps(body, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    return f"{effect_key}:{op}:{digest}"
+
+
+def _meta(obj) -> dict:
+    """Metadata as a plain dict. A StripeObject is not a Mapping and has no .get."""
+    meta = getattr(obj, "metadata", None)
+    if meta is None:
+        return {}
+    try:
+        return meta.to_dict()
+    except AttributeError:
+        return dict(meta)
 
 
 class StripeAdapter(LiveAdapter, Adapter):
@@ -98,16 +220,21 @@ class StripeAdapter(LiveAdapter, Adapter):
         amount = int(effect.params.get("amount_cents") or intent.amount_received)
         reason = effect.params.get("reason", "")
 
+        # ONLY stable identifiers in the body. run_id and the free-text reason
+        # vary between runs and belong in the Notion audit row, not here.
+        refund_body = {
+            "payment_intent": intent.id,
+            "amount": amount,
+            "metadata": {"order_id": order_id},
+        }
         outcome = retry.call(
+            # Stripe's NATIVE idempotency. A retry of this exact key is absorbed
+            # upstream and returns the original Refund rather than issuing a
+            # second one -- the one provider here where duplicate suppression
+            # does not depend on our own bookkeeping.
             lambda: self.client.Refund.create(
-                payment_intent=intent.id,
-                amount=amount,
-                metadata={"order_id": order_id, "run_id": self.run_id, "reason": reason[:400]},
-                # Stripe's NATIVE idempotency. A retry of this exact key is
-                # absorbed upstream and returns the original Refund rather than
-                # issuing a second one -- the one provider here where duplicate
-                # suppression does not depend on our own bookkeeping.
-                idempotency_key=f"{effect.idempotency_key}:refund",
+                **refund_body,
+                idempotency_key=idem_key(effect.idempotency_key, "refund", refund_body),
             ),
             op="refund.create",
         )
@@ -169,14 +296,17 @@ class StripeAdapter(LiveAdapter, Adapter):
                 "default_price_amount": old_amount,
             }
 
+        price_body = {
+            "product": product.id,
+            "currency": "usd",
+            "unit_amount": new_amount,
+            "recurring": {"interval": "month"},
+            "metadata": {"product_key": product_key},
+        }
         created = retry.call(
             lambda: self.client.Price.create(
-                product=product.id,
-                currency="usd",
-                unit_amount=new_amount,
-                recurring={"interval": "month"},
-                metadata={"product_key": product_key, "run_id": self.run_id},
-                idempotency_key=f"{effect.idempotency_key}:price",
+                **price_body,
+                idempotency_key=idem_key(effect.idempotency_key, "price", price_body),
             ),
             op="price.create",
         )
@@ -185,36 +315,72 @@ class StripeAdapter(LiveAdapter, Adapter):
         new_price = created.value
         effect.prior_state["new_price_id"] = new_price.id
 
+        # Do NOT trust `new_price.active` from the line above.
+        #
+        # An idempotent replay returns the price AS FIRST CREATED -- active=True
+        # -- even when a later run's compensation has since archived it. The
+        # response describes a moment in the past, not the current object. Read
+        # it back fresh instead, which is the same rule verify() follows and the
+        # reason this project exists; believing the write's own response here
+        # cost three flaky live runs.
+        #
+        # Reusing the price rather than minting a new one is deliberate: it
+        # stops a repeated reprice from littering the product with near
+        # identical prices.
+        live_price = self.client.Price.retrieve(new_price.id)
+        if not live_price.active:
+            reactivated = retry.call(
+                lambda: self.client.Price.modify(new_price.id, active=True),
+                op="price.reactivate",
+            )
+            if not reactivated.ok:
+                return self._failed(effect, reactivated, "Price.modify(reactivate replayed)")
+
+        # NO idempotency key on this modify, deliberately.
+        #
+        # An idempotency key makes Stripe REPLAY the first response without
+        # re-performing the operation. That is exactly right for a create,
+        # where running twice would mint a second object. It is exactly wrong
+        # for "set default_price to X": a later run replays the cached 200,
+        # Stripe never actually moves the default, and the next step then fails
+        # trying to archive a price that is still the default. Observed here.
+        #
+        # Setting a field to a specific value is already idempotent by nature --
+        # doing it twice leaves the same state and creates nothing. It needs no
+        # key, and giving it one converts a safe repeat into a silent no-op.
         promoted = retry.call(
-            lambda: self.client.Product.modify(
-                product.id,
-                default_price=new_price.id,
-                idempotency_key=f"{effect.idempotency_key}:default",
-            ),
+            lambda: self.client.Product.modify(product.id, default_price=new_price.id),
             op="product.modify",
         )
         if not promoted.ok:
             return self._failed(effect, promoted, "Product.modify(default_price)")
 
         # Archive the old price LAST. Stripe refuses to archive a price that is
-        # still a product default, so the order here is load-bearing.
+        # still a product default, so the order here is load-bearing -- and the
+        # promote above must have actually taken effect, not been replayed.
+        # Re-read the product to confirm before archiving, rather than assuming
+        # the modify did what it said.
         archived = None
-        if old_price_id:
+        if old_price_id and old_price_id != new_price.id:
+            live_default = self._default_price_id(self.client.Product.retrieve(product.id))
+            if live_default == old_price_id:
+                return self._failed(
+                    effect,
+                    retry.merge(created, promoted),
+                    f"default_price is still {old_price_id} after promoting {new_price.id}; "
+                    f"refusing to archive the live default price",
+                )
+        if old_price_id and old_price_id != new_price.id:
+            # Same reasoning as the promote above: a field assignment is
+            # naturally idempotent, so no key.
             archived = retry.call(
-                lambda: self.client.Price.modify(
-                    old_price_id,
-                    active=False,
-                    idempotency_key=f"{effect.idempotency_key}:archive",
-                ),
+                lambda: self.client.Price.modify(old_price_id, active=False),
                 op="price.archive",
             )
             if not archived.ok:
                 return self._failed(effect, archived, "Price.modify(archive old)")
 
-        merged = retry.Outcome(
-            ok=True,
-            attempts=created.attempts + promoted.attempts + (archived.attempts if archived else []),
-        )
+        merged = retry.merge(created, promoted, archived)
         return self._ok(effect, merged, {
             "product_id": product.id,
             "new_price_id": new_price.id,
@@ -291,7 +457,7 @@ class StripeAdapter(LiveAdapter, Adapter):
         def check(attempt: int) -> tuple[bool, str]:
             # FRESH retrieve with default_price expanded, resolved from the
             # product_key in the Effect -- not from anything apply() returned.
-            product = self._find_product(product_key, expand=["data.default_price"])
+            product = self._find_product(product_key, expand=["default_price"])
             if product is None:
                 return False, f"no product for product_key={product_key!r} (read attempt {attempt})"
             price = getattr(product, "default_price", None)
@@ -388,11 +554,7 @@ class StripeAdapter(LiveAdapter, Adapter):
                 op="price.archive_new",
             )
 
-        merged = retry.Outcome(
-            ok=True,
-            attempts=unarchive.attempts + restore.attempts
-            + (archived_new.attempts if archived_new else []),
-        )
+        merged = retry.merge(unarchive, restore, archived_new)
         return self._ok(effect, merged, {
             "restored_default_price_id": old_price_id,
             "archived_price_id": new_price_id,
@@ -408,7 +570,7 @@ class StripeAdapter(LiveAdapter, Adapter):
         adapter's own verify path -- the point is that a different app's claim
         is checked against this, not that Stripe agrees with itself.
         """
-        product = self._find_product(product_key, expand=["data.default_price"])
+        product = self._find_product(product_key, expand=["default_price"])
         if product is None:
             return None
         price = getattr(product, "default_price", None)
@@ -437,21 +599,12 @@ class StripeAdapter(LiveAdapter, Adapter):
     # -- internals ---------------------------------------------------------
 
     def _find_payment_intent(self, order_id: str):
-        results = self.client.PaymentIntent.search(
-            query=f"metadata['order_id']:'{order_id}'", limit=100
-        ).data
+        results = find_payment_intents_by_order(self.client, order_id)
         usable = [pi for pi in results if pi.status in ("succeeded", "requires_capture")]
         return usable[0] if usable else (results[0] if results else None)
 
     def _find_product(self, product_key: str, expand: list[str] | None = None):
-        kwargs: dict[str, Any] = {
-            "query": f"metadata['product_key']:'{product_key}'",
-            "limit": 1,
-        }
-        if expand:
-            kwargs["expand"] = expand
-        results = self.client.Product.search(**kwargs).data
-        return results[0] if results else None
+        return find_product_by_key(self.client, product_key, expand=expand)
 
     @staticmethod
     def _default_price_id(product) -> str | None:

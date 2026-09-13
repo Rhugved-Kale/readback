@@ -182,7 +182,8 @@ class Receipt:
             for attempt in _attempts_of(call):
                 lines.append(
                     f"           attempt {attempt.get('attempt')}: "
-                    f"{attempt.get('status'):<8} {attempt.get('latency_ms', 0):7.2f}ms"
+                    f"{attempt.get('op', ''):<16} {attempt.get('status'):<8} "
+                    f"{attempt.get('latency_ms', 0):7.2f}ms"
                     + (f"  http={attempt['http_status']}" if attempt.get("http_status") else "")
                     + (f"  slept {attempt['slept_ms']:.0f}ms" if attempt.get("slept_ms") else "")
                     + (f"  {attempt['error']}" if attempt.get("error") else "")
