@@ -1,5 +1,39 @@
 # Readback
 
+## Reproduce our numbers in 60 seconds
+
+**No credentials. No `.env`. No network. No API keys.** The eval harness runs entirely
+against in-memory fake providers.
+
+```bash
+git clone https://github.com/Rhugved-Kale/readback.git
+cd readback
+python3.11 -m venv .venv          # Python 3.11+ required
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e .
+.venv/bin/python -m readback.evals.run
+```
+
+Expected final lines:
+
+```
+success_correctness       readback_on: 62.5% (360)    readback_off: 37.5% (360)
+refusal_correctness       readback_on: 100.0% (160)   readback_off: 100.0% (160)
+compensation_correctness  readback_on: 100.0% (40)    readback_off: 0.0% (40)
+SILENT FAILURES  readback_on: 0/560   readback_off: 165/560
+```
+
+1120 runs: 14 scenarios × 8 fault profiles × 2 modes × 5 repeats. Deterministic —
+two invocations produce identical results. Typical timing on a laptop: **~8s setup,
+~1s to run**, once the clone and download are done.
+
+**`python3.11` is not optional.** On macOS `python3` is 3.9, which cannot resolve the
+pinned dependencies. If `python3.11` is missing: `brew install python@3.11`.
+
+Full results, methodology and limitations: **[EVAL.md](EVAL.md)**.
+
+---
+
 An ops agent that executes multi-step requests across Stripe, Notion and Slack, then re-reads live state from every app it touched before reporting anything — and reverses its own writes when a read-back assertion fails.
 
 ## Why
@@ -9,11 +43,12 @@ The provider's response to a write is the least trustworthy thing in the system.
 ## Run it
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3.11 -m venv .venv && source .venv/bin/activate   # 3.11+ required
 pip install -r requirements.txt
 pip install -e .
 pytest -q
 python -m readback.cli --demo 1
+python -m readback.evals.run          # the eval harness — no credentials needed
 ```
 
 The CLI and the default test run use in-memory fake adapters: no network, no credentials.
