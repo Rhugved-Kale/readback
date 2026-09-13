@@ -22,6 +22,13 @@ OUTCOME_FAILURE = "failure"
 OUTCOME_HELD = "held"
 OUTCOME_REFUSED = "refused"
 
+#: Rollback ran but could not be total: at least one committed effect had no
+#: provider inverse. Never reported as success, and deliberately distinct from
+#: plain failure -- "we undid everything" and "we undid everything except a
+#: $99 refund that already left the account" are different facts for the human
+#: reading this.
+OUTCOME_PARTIAL = "partial_manual_remediation"
+
 DEFAULT_ROOT = Path("runs")
 
 _RULE = "=" * 72
@@ -40,6 +47,9 @@ class ProviderCall:
     status: str
     latency_ms: float
     error: str | None = None
+    #: Per-attempt history from the retry helper. Empty for adapters that do
+    #: not retry (the fakes), populated for every live call.
+    attempts: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -54,6 +64,33 @@ class Verification:
 
 
 @dataclass
+class CrossCheckResult:
+    """One cross-app assertion: a fact read from a different app than wrote it."""
+
+    name: str
+    reads_from: str
+    written_by: str
+    description: str
+    passed: bool
+    detail: str
+
+
+@dataclass
+class ManualRemediation:
+    """One committed effect that could not be reversed.
+
+    Carries the exact provider object id a human needs to finish by hand. This
+    is the payload of a PARTIAL_MANUAL_REMEDIATION receipt.
+    """
+
+    app: str
+    action: str
+    effect_id: str
+    object_id: str
+    what: str
+
+
+@dataclass
 class Receipt:
     run_id: str
     requested: str
@@ -64,6 +101,8 @@ class Receipt:
     planned: list[dict[str, Any]] = field(default_factory=list)
     calls: list[ProviderCall] = field(default_factory=list)
     verifications: list[Verification] = field(default_factory=list)
+    crosschecks: list[CrossCheckResult] = field(default_factory=list)
+    manual_remediation: list[ManualRemediation] = field(default_factory=list)
     state_diff: dict[str, Any] = field(default_factory=dict)
     finished_at: str = ""
 
@@ -89,6 +128,8 @@ class Receipt:
             "planned": self.planned,
             "calls": [asdict(c) for c in self.calls],
             "verifications": [asdict(v) for v in self.verifications],
+            "crosschecks": [asdict(c) for c in self.crosschecks],
+            "manual_remediation": [asdict(m) for m in self.manual_remediation],
             "state_diff": self.state_diff,
         }
 
@@ -138,6 +179,14 @@ class Receipt:
                 f"  [{flag}] {call.phase:<10} {call.app}.{call.action:<20} "
                 f"{call.latency_ms:7.2f}ms  {call.status}"
             )
+            for attempt in _attempts_of(call):
+                lines.append(
+                    f"           attempt {attempt.get('attempt')}: "
+                    f"{attempt.get('status'):<8} {attempt.get('latency_ms', 0):7.2f}ms"
+                    + (f"  http={attempt['http_status']}" if attempt.get("http_status") else "")
+                    + (f"  slept {attempt['slept_ms']:.0f}ms" if attempt.get("slept_ms") else "")
+                    + (f"  {attempt['error']}" if attempt.get("error") else "")
+                )
             if call.error:
                 lines.append(f"         error: {call.error}")
         lines.append("")
@@ -150,6 +199,25 @@ class Receipt:
             lines.append(f"  [{flag}] {check.app}.{check.action}")
             lines.append(f"         {check.detail}")
         lines.append("")
+
+        lines.append(f"CROSS-APP CHECKS ({len(self.crosschecks)})")
+        if not self.crosschecks:
+            lines.append("  (none — cross-checks require live adapters)")
+        for cross in self.crosschecks:
+            flag = "PASS" if cross.passed else "FAIL"
+            lines.append(f"  [{flag}] {cross.name}  (reads {cross.reads_from})")
+            lines.append(f"         {cross.description}")
+            lines.append(f"         {cross.detail}")
+        lines.append("")
+
+        if self.manual_remediation:
+            lines.append("!! MANUAL REMEDIATION REQUIRED")
+            lines.append("   Rollback could not be completed. These committed effects have")
+            lines.append("   no provider inverse and need a human:")
+            for item in self.manual_remediation:
+                lines.append(f"   - {item.app}.{item.action}  object: {item.object_id}")
+                lines.append(f"     {item.what}")
+            lines.append("")
 
         lines.append("STATE DIFF")
         if not self.state_diff:
@@ -176,6 +244,16 @@ class Receipt:
             lines.append(f"  {self.reason}")
         lines.append(_RULE)
         return "\n".join(lines) + "\n"
+
+
+def _attempts_of(call: "ProviderCall") -> list[dict[str, Any]]:
+    """Per-attempt history a live adapter attached to the call, if any.
+
+    Only rendered when there is more than one attempt: a clean single-try call
+    is already fully described by its own line.
+    """
+    body = getattr(call, "attempts", None) or []
+    return body if len(body) > 1 else []
 
 
 def diff_snapshots(

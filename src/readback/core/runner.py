@@ -25,13 +25,16 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from ..planner import plan_request
-from ..types import STATUS_OK, Effect, EffectResult, RunContext
-from . import riskgate
+from ..types import STATUS_OK, Effect, EffectResult, IrreversibleEffect, RunContext
+from . import crosscheck, riskgate
 from .receipt import (
     OUTCOME_FAILURE,
     OUTCOME_HELD,
+    OUTCOME_PARTIAL,
     OUTCOME_REFUSED,
     OUTCOME_SUCCESS,
+    CrossCheckResult,
+    ManualRemediation,
     ProviderCall,
     Receipt,
     Verification,
@@ -84,8 +87,25 @@ def run(
         receipt.reason = "Planner produced no effects for this request."
         return _finish(receipt, root, write_receipt)
 
+    # -- order -----------------------------------------------------------
+    # Irreversible effects run LAST.
+    #
+    # Rollback is only total while every committed effect still has an inverse.
+    # If the refund runs first and the Notion write then fails read-back, the
+    # money is already gone and the best available outcome is PARTIAL. Running
+    # every reversible effect first means a plan that is going to fail has the
+    # maximum chance of failing while it is still completely undoable -- the
+    # refund is not attempted until everything cheap to reverse has already
+    # proven it can land.
+    #
+    # Stable sort: within each group the planner's ordering is preserved, so
+    # this reorders only across the reversible/irreversible boundary.
+    effects = sorted(plan.effects, key=lambda e: not e.reversible)
+    if [e.id for e in effects] != [e.id for e in plan.effects]:
+        receipt.planned = [effect.to_dict() for effect in effects]
+
     # -- apply -----------------------------------------------------------
-    for effect in plan.effects:
+    for effect in effects:
         adapter = _adapter_for(adapters, effect)
         wal.intend(effect)
 
@@ -116,7 +136,7 @@ def run(
 
     # -- read back -------------------------------------------------------
     failures: list[Verification] = []
-    for effect in plan.effects:
+    for effect in effects:
         adapter = _adapter_for(adapters, effect)
         passed, detail = adapter.verify(effect)
         receipt.verifications.append(
@@ -135,41 +155,144 @@ def run(
         else:
             failures.append(receipt.verifications[-1])
 
+    # -- cross-app checks --------------------------------------------------
+    # Only after every per-effect verify has passed. Each assertion reads a
+    # fact from a DIFFERENT app than the one that wrote it, which is the only
+    # way to catch the failure where every individual write landed but the
+    # apps no longer agree with each other.
+    cross_failures: list[CrossCheckResult] = []
     if not failures:
+        for check in crosscheck.build(adapters, effects, ctx.run_id):
+            passed, detail = check.evaluate()
+            result = CrossCheckResult(
+                name=check.name,
+                reads_from=check.reads_from,
+                written_by=check.written_by,
+                description=check.description,
+                passed=passed,
+                detail=detail,
+            )
+            receipt.crosschecks.append(result)
+            if not passed:
+                cross_failures.append(result)
+
+    if not failures and not cross_failures:
         receipt.outcome = OUTCOME_SUCCESS
         receipt.reason = (
-            f"All {len(receipt.verifications)} read-back assertion(s) passed "
-            f"against live state."
+            f"All {len(receipt.verifications)} read-back assertion(s) and "
+            f"{len(receipt.crosschecks)} cross-app check(s) passed against live state."
         )
         receipt.state_diff = _diff(adapters, before)
         return _finish(receipt, root, write_receipt)
 
     # -- compensate ------------------------------------------------------
+    # Reverse order, so later writes are undone before the writes they depended
+    # on. An effect with no inverse does not stop the walk: everything else is
+    # still reversed, and the un-reversible one is collected for the receipt.
     for record in reversed(wal.committed_effects()):
-        effect = Effect(
-            app=record["app"],
-            action=record["action"],
-            params=record["params"],
-            idempotency_key=record["idempotency_key"],
-            id=record["effect_id"],
-        )
+        # Rebuilt from the WAL, not from memory, so this path behaves the same
+        # in a restarted process as it does here. prior_state rides along.
+        effect = Effect.from_record(record)
         adapter = _adapter_for(adapters, effect)
-        result = adapter.compensate(effect)
+        try:
+            result = adapter.compensate(effect)
+        except IrreversibleEffect as exc:
+            receipt.manual_remediation.append(
+                ManualRemediation(
+                    app=exc.app or effect.app,
+                    action=effect.action,
+                    effect_id=effect.id,
+                    object_id=exc.object_id,
+                    what=str(exc),
+                )
+            )
+            receipt.calls.append(
+                ProviderCall(
+                    phase="compensate",
+                    app=effect.app,
+                    action=effect.action,
+                    effect_id=effect.id,
+                    idempotency_key=effect.idempotency_key,
+                    status="irreversible",
+                    latency_ms=0.0,
+                    error=str(exc),
+                )
+            )
+            continue
         receipt.calls.append(_call("compensate", effect, result))
         wal.compensated(effect, result)
 
-    first = failures[0]
-    receipt.outcome = OUTCOME_FAILURE
-    receipt.reason = (
-        f"Read-back failed on {first.app}.{first.action}: {first.detail} "
-        f"({len(failures)} of {len(receipt.verifications)} assertion(s) failed). "
-        f"All committed effects were compensated."
-    )
+    reason_head = _failure_head(failures, cross_failures, receipt)
+
+    if receipt.manual_remediation:
+        # NEVER success, and never plain failure either: the system is in a
+        # state no automated step can finish cleaning up.
+        receipt.outcome = OUTCOME_PARTIAL
+        objects = "; ".join(
+            f"{m.app}.{m.action} -> {m.object_id}" for m in receipt.manual_remediation
+        )
+        receipt.reason = (
+            f"{reason_head} Every reversible effect was compensated, but "
+            f"{len(receipt.manual_remediation)} committed effect(s) have no provider "
+            f"inverse and need a human: {objects}."
+        )
+        _notify_manual_remediation(adapters, receipt)
+    else:
+        receipt.outcome = OUTCOME_FAILURE
+        receipt.reason = f"{reason_head} All committed effects were compensated."
+
     receipt.state_diff = _diff(adapters, before)
     return _finish(receipt, root, write_receipt)
 
 
 # -- helpers ---------------------------------------------------------------
+
+
+def _failure_head(
+    failures: list[Verification],
+    cross_failures: list[CrossCheckResult],
+    receipt: Receipt,
+) -> str:
+    """Name the assertion that actually failed, verify or cross-check."""
+    if failures:
+        first = failures[0]
+        return (
+            f"Read-back failed on {first.app}.{first.action}: {first.detail} "
+            f"({len(failures)} of {len(receipt.verifications)} assertion(s) failed)."
+        )
+    first_cross = cross_failures[0]
+    return (
+        f"Cross-app check failed: {first_cross.detail} "
+        f"({len(cross_failures)} of {len(receipt.crosschecks)} cross-check(s) failed). "
+        f"Every per-effect verification passed, so each write landed in its own app "
+        f"but the apps disagree with each other."
+    )
+
+
+def _notify_manual_remediation(adapters: Mapping[str, Any], receipt: Receipt) -> None:
+    """Post the remediation notice to Slack.
+
+    Best effort by design: if Slack itself is the thing that is broken, the
+    receipt on disk is still the durable record and must not be lost to an
+    exception raised while trying to announce it.
+    """
+    slack = adapters.get("slack")
+    notify = getattr(slack, "post_notice", None)
+    if notify is None:
+        return
+    lines = [
+        f":rotating_light: Readback run `{receipt.run_id}` could not fully roll back.",
+        f"Request: {receipt.requested}",
+        f"Reason: {receipt.reason}",
+        "",
+        "Needs a human:",
+    ]
+    for item in receipt.manual_remediation:
+        lines.append(f"• `{item.app}.{item.action}` object `{item.object_id}` — {item.what}")
+    try:
+        notify("\n".join(lines))
+    except BaseException:  # noqa: BLE001
+        pass
 
 
 def _adapter_for(adapters: Mapping[str, Any], effect: Effect):
@@ -183,6 +306,7 @@ def _adapter_for(adapters: Mapping[str, Any], effect: Effect):
 
 
 def _call(phase: str, effect: Effect, result: EffectResult) -> ProviderCall:
+    body = result.provider_response if isinstance(result.provider_response, dict) else {}
     return ProviderCall(
         phase=phase,
         app=effect.app,
@@ -192,6 +316,7 @@ def _call(phase: str, effect: Effect, result: EffectResult) -> ProviderCall:
         status=result.status,
         latency_ms=result.latency_ms,
         error=result.error,
+        attempts=body.get("attempts", []) or [],
     )
 
 

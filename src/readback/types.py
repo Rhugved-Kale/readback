@@ -16,6 +16,28 @@ STATUS_SKIPPED = "skipped"
 # The risk gate sums these; a price change is not money moved.
 MONEY_MOVING_ACTIONS = frozenset({"refund_payment", "create_charge", "create_payout"})
 
+# Actions with no provider inverse. Known at PLAN time, not discovered at apply
+# time, because the runner has to sort irreversible effects last *before* it
+# calls anything -- by the time an adapter could tell us, the ordering decision
+# is already spent. Adapters may still downgrade an effect to irreversible
+# during apply() (e.g. a product with no prior default_price to restore); they
+# may not upgrade one listed here back to reversible.
+IRREVERSIBLE_ACTIONS = frozenset({"refund_payment", "create_charge", "create_payout"})
+
+
+class IrreversibleEffect(Exception):
+    """Raised by compensate() for a write the provider cannot undo.
+
+    Carries the provider object id a human needs in order to finish the job by
+    hand. This is never swallowed into a generic failure: a run that cannot
+    fully roll back must say so, name the object, and refuse to report success.
+    """
+
+    def __init__(self, message: str, *, app: str = "", object_id: str = "") -> None:
+        super().__init__(message)
+        self.app = app
+        self.object_id = object_id
+
 
 @dataclass
 class Effect:
@@ -33,7 +55,26 @@ class Effect:
     idempotency_key: str = ""
     id: str = field(default_factory=lambda: f"eff_{uuid.uuid4().hex[:12]}")
 
+    #: False when the provider offers no true inverse for this write. A refund
+    #: is the canonical case: money has left the account and no API call puts it
+    #: back. Irreversible effects are sorted to run LAST (see runner) so that a
+    #: reversible effect that is going to fail fails while rollback is still
+    #: total, and a run that trips compensation after one has committed reports
+    #: PARTIAL_MANUAL_REMEDIATION rather than claiming a clean rollback.
+    reversible: bool = True
+
+    #: The provider state this effect overwrote, captured by apply() BEFORE the
+    #: write goes out. compensate() restores from here, so it must be captured
+    #: even when nothing later reads it. None means "not captured yet"; an
+    #: effect that reaches apply() with reversible=True and cannot capture its
+    #: prior state must downgrade itself to reversible=False rather than commit
+    #: a write it has no way to undo.
+    prior_state: dict[str, Any] | None = None
+
     def __post_init__(self) -> None:
+        if self.action in IRREVERSIBLE_ACTIONS:
+            # Not overridable: no caller gets to declare a refund reversible.
+            self.reversible = False
         if not self.idempotency_key:
             # Derived from the effect identity so a retry of the *same* logical
             # write produces the *same* key. Callers should normally pass an
@@ -54,7 +95,28 @@ class Effect:
             "action": self.action,
             "params": self.params,
             "idempotency_key": self.idempotency_key,
+            "reversible": self.reversible,
+            "prior_state": self.prior_state,
         }
+
+    @classmethod
+    def from_record(cls, record: dict[str, Any]) -> "Effect":
+        """Rebuild an Effect from a WAL record.
+
+        Compensation after a crash has nothing but the WAL to work from, so
+        `prior_state` and `reversible` have to survive the round trip. Dropping
+        them here would leave a restarted process able to see that a write
+        happened but not what it overwrote.
+        """
+        return cls(
+            app=record["app"],
+            action=record["action"],
+            params=record.get("params", {}),
+            idempotency_key=record.get("idempotency_key", ""),
+            id=record.get("effect_id", ""),
+            reversible=record.get("reversible", True),
+            prior_state=record.get("prior_state"),
+        )
 
 
 @dataclass

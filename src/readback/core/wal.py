@@ -140,6 +140,11 @@ class WAL:
             "app": effect.app,
             "action": effect.action,
             "params": effect.params,
+            "reversible": effect.reversible,
+            # Persisted so a process that restarts mid-run can still reverse a
+            # write it did not perform: compensation reads prior_state from
+            # here, not from adapter memory, which the crash destroyed.
+            "prior_state": effect.prior_state,
             "state": state,
         }
         if result is not None:

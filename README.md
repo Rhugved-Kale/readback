@@ -16,7 +16,9 @@ pytest -q
 python -m readback.cli --demo 1
 ```
 
-The CLI and the tests run against in-memory fake adapters: no network, no credentials.
+The CLI and the default test run use in-memory fake adapters: no network, no credentials.
+Add `--live` to run against real Stripe/Notion/Slack (requires `.env`, spends real
+money, posts publicly). The live tests are deselected by default — `pytest -m live`.
 
 ## Layout
 
@@ -25,6 +27,9 @@ The CLI and the tests run against in-memory fake adapters: no network, no creden
 | `SCENARIOS.md` | The 14 scenarios the eval harness runs |
 | `src/readback/adapters/base.py` | The four-method adapter contract |
 | `src/readback/adapters/fake.py` | In-memory adapter + fault injection |
+| `src/readback/adapters/{stripe,notion,slack}_adapter.py` | The three live adapters |
+| `src/readback/core/retry.py` | Shared backoff: 429/5xx only, never 4xx |
+| `src/readback/core/crosscheck.py` | Assertions that read one app to test another's claim |
 | `src/readback/core/wal.py` | fsynced append-only write-ahead log |
 | `src/readback/core/riskgate.py` | Scope / count / money thresholds |
 | `src/readback/core/runner.py` | plan → gate → apply → read back → compensate |
@@ -33,7 +38,7 @@ The CLI and the tests run against in-memory fake adapters: no network, no creden
 
 ## TODO
 
-- [ ] Implement `StripeAdapter`, `NotionAdapter` and `SlackAdapter` against the real APIs — each currently raises `NotImplementedError` with the exact call it will make.
 - [ ] Replace the hardcoded regex table in `planner.py` with Anthropic tool-use parsing (see the module docstring for the constraints that must survive the swap).
 - [ ] Build the eval harness that runs all 14 scenarios in `SCENARIOS.md` and asserts the expected outcome for each.
-- [ ] Decide the honest compensation story for irreversible effects (a Stripe refund has no inverse).
+- [ ] Run the live suite (`pytest -m live`) — written but never yet executed against real APIs.
+- [ ] Surface `PARTIAL_MANUAL_REMEDIATION` runs somewhere durable; a Slack post is easy to miss.

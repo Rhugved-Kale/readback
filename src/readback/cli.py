@@ -3,18 +3,21 @@
     python -m readback.cli "Refund order 4417 and log the reason."
     python -m readback.cli --demo 1
 
-Wired to FakeAdapters. The real adapters are not implemented yet, so the CLI
-runs entirely in memory and needs no network and no credentials.
+Defaults to FakeAdapters: no network, no credentials, safe to run anywhere.
 
-TODO: add --live to swap in StripeAdapter/NotionAdapter/SlackAdapter once those
-      are implemented, and require an explicit confirmation before the first
-      real write.
+    python -m readback.cli --demo 1 --live
+
+swaps in the real Stripe/Notion/Slack adapters. Because --live spends real
+money and posts to a real channel, it requires an interactive confirmation
+unless --yes is passed.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+
+import uuid
 
 from .adapters.fake import FakeAdapter
 from .core.runner import run
@@ -31,6 +34,19 @@ def build_fake_adapters() -> dict[str, FakeAdapter]:
     return {name: FakeAdapter(name=name) for name in ("stripe", "notion", "slack")}
 
 
+def _confirm(request_text: str) -> bool:
+    """Gate the first real write behind an explicit yes."""
+    sys.stderr.write(
+        "\n*** --live will execute REAL writes against Stripe, Notion and Slack.\n"
+        f"*** Request: {request_text}\n"
+        "*** Type 'yes' to proceed: "
+    )
+    try:
+        return input().strip().lower() == "yes"
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="readback",
@@ -44,6 +60,16 @@ def main(argv: list[str] | None = None) -> int:
         help="run one of the built-in demo requests",
     )
     parser.add_argument("--run-id", help="resume an existing run by id")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="use the REAL Stripe/Notion/Slack adapters (spends money, posts publicly)",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="skip the --live confirmation prompt (for non-interactive use)",
+    )
     parser.add_argument("--root", default="runs", help="where to write WALs and receipts")
     args = parser.parse_args(argv)
 
@@ -55,10 +81,29 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("pass a request string or --demo 1|2|3")
         return 2
 
+    # The run id is generated HERE rather than inside run() because the live
+    # adapters need it at construction time: Notion stamps it into the audit
+    # row's Run ID column and Slack into its message marker, and both are what
+    # verify() and the duplicate-suppression checks key on.
+    run_id = args.run_id or f"run_{uuid.uuid4().hex[:12]}"
+
+    if args.live:
+        from .adapters.live import build_live_adapters, missing_env
+
+        gaps = missing_env()
+        if gaps:
+            parser.error(f"--live needs these env vars set: {', '.join(gaps)}")
+        if not args.yes and not _confirm(request_text):
+            sys.stderr.write("aborted; nothing was applied\n")
+            return 2
+        adapters = build_live_adapters(run_id)
+    else:
+        adapters = build_fake_adapters()
+
     receipt = run(
         request_text,
-        adapters=build_fake_adapters(),
-        run_id=args.run_id,
+        adapters=adapters,
+        run_id=run_id,
         root=args.root,
     )
     sys.stdout.write(receipt.to_text())

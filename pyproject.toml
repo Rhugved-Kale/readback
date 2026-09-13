@@ -13,3 +13,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# "live" is deselected by default: those tests spend real money, write to a real
+# Notion workspace and post to a real Slack channel. Run them deliberately with
+#   pytest -m live
+addopts = "-m 'not live'"
+markers = [
+    "live: hits real Stripe/Notion/Slack APIs. Requires .env. Not run by default.",
+]
