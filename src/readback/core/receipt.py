@@ -102,6 +102,8 @@ class Receipt:
     calls: list[ProviderCall] = field(default_factory=list)
     verifications: list[Verification] = field(default_factory=list)
     crosschecks: list[CrossCheckResult] = field(default_factory=list)
+    #: Set when a human released a plan the risk gate held.
+    approval: dict[str, str] = field(default_factory=dict)
     manual_remediation: list[ManualRemediation] = field(default_factory=list)
     state_diff: dict[str, Any] = field(default_factory=dict)
     finished_at: str = ""
@@ -129,6 +131,7 @@ class Receipt:
             "calls": [asdict(c) for c in self.calls],
             "verifications": [asdict(v) for v in self.verifications],
             "crosschecks": [asdict(c) for c in self.crosschecks],
+            "approval": self.approval,
             "manual_remediation": [asdict(m) for m in self.manual_remediation],
             "state_diff": self.state_diff,
         }
@@ -159,6 +162,11 @@ class Receipt:
             "",
             "RISK GATE",
             f"  {self.gate.get('verdict', 'n/a')}: {self.gate.get('reason', '')}",
+            *(
+                [f"  RELEASED BY {self.approval['approver']} "
+                 f"(held: {self.approval.get('gate_reason', '')})"]
+                if self.approval else []
+            ),
             "",
             f"PLANNED ({len(self.planned)} effect(s))",
         ]

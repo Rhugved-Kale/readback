@@ -50,6 +50,7 @@ def run(
     root: str = "runs",
     write_receipt: bool = True,
     readback: bool = True,
+    approved_by: str | None = None,
 ) -> Receipt:
     """Execute one request end to end and return its receipt.
 
@@ -84,11 +85,19 @@ def run(
     decision = riskgate.evaluate(request_text, plan.effects)
     receipt.gate = decision.to_dict()
 
-    if decision.held:
+    if decision.held and not approved_by:
         # Zero provider calls. Nothing to compensate, nothing to verify.
         receipt.outcome = OUTCOME_HELD
         receipt.reason = f"Held for human approval. {decision.reason}"
         return _finish(receipt, root, write_receipt)
+
+    if decision.held and approved_by:
+        # A human released it. The gate verdict is NOT rewritten to "allow":
+        # the receipt must keep showing which rule fired and who overrode it,
+        # otherwise an approved run is indistinguishable from one that was
+        # never risky. Logged to the WAL before any provider call.
+        wal.approved(approved_by, decision.reason)
+        receipt.approval = {"approver": approved_by, "gate_reason": decision.reason}
 
     if plan.refused:
         receipt.outcome = OUTCOME_REFUSED

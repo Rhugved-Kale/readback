@@ -25,6 +25,9 @@ COMMITTED = "COMMITTED"
 FAILED = "FAILED"
 COMPENSATED = "COMPENSATED"
 
+#: Not an effect state: a human releasing a plan the risk gate held.
+APPROVED = "APPROVED"
+
 DEFAULT_ROOT = Path("runs")
 
 
@@ -67,6 +70,30 @@ class WAL:
     def compensated(self, effect: Effect, result: EffectResult | None = None) -> dict[str, Any]:
         """Log that a previously COMMITTED effect has been reversed."""
         return self._append(effect, COMPENSATED, result)
+
+    def approved(self, approver: str, gate_reason: str) -> dict[str, Any]:
+        """Record that a human released a held plan.
+
+        Written BEFORE the first provider call of the approved run, so the
+        durable record shows the authorisation preceded the writes rather than
+        being reconstructed afterwards. Not an Effect: nothing to compensate,
+        and it must never be mistaken for one during rollback.
+        """
+        self._seq += 1
+        record = {
+            "seq": self._seq,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "run_id": self.run_id,
+            "state": APPROVED,
+            "approver": approver,
+            "gate_reason": gate_reason,
+        }
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        self.records.append(record)
+        return record
 
     # -- queries -----------------------------------------------------------
 
@@ -121,15 +148,21 @@ class WAL:
         """Latest non-INTENDED record per key, in the order those records were written."""
         latest: dict[str, dict[str, Any]] = {}
         for record in self.records:
-            if record["state"] == INTENDED:
+            if record["state"] in (INTENDED, APPROVED):
                 continue
             latest[record["idempotency_key"]] = record
-        return [r for r in self.records if latest.get(r["idempotency_key"]) is r]
+        return [
+            r for r in self.records
+            if r.get("idempotency_key") and latest.get(r["idempotency_key"]) is r
+        ]
 
     def _terminal_state(self, idempotency_key: str) -> str | None:
         state: str | None = None
         for record in self.records:
-            if record["idempotency_key"] == idempotency_key and record["state"] != INTENDED:
+            if (
+                record.get("idempotency_key") == idempotency_key
+                and record["state"] not in (INTENDED, APPROVED)
+            ):
                 state = record["state"]
         return state
 
