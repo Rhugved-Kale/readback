@@ -16,7 +16,7 @@ Every app sits behind one shape: `plan`, `apply`, `verify`, `compensate`. Stripe
 
 ### Write-ahead log
 
-Intent is fsynced to `runs/{run_id}/wal.jsonl` before the provider call, not after. Every effect carries an idempotency key derived from the logical write (order id, product key), never a timestamp, and on retry anything already COMMITTED is skipped. A crash between the write landing and us hearing about it is what this is for.
+Intent is fsynced to `runs/{run_id}/wal.jsonl` before the provider call, not after. Every effect carries an idempotency key derived from the logical write (order id, product key), never a timestamp, and on retry anything already COMMITTED is skipped. A crash between the write landing and me hearing about it is what this is for.
 
 ### Read-back
 

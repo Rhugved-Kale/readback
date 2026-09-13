@@ -21,7 +21,7 @@ SILENT FAILURES  readback_on: 0/560   readback_off: 165/560
 
 A silent failure is a run that reported success while an independent oracle found the world in the wrong state.
 
-## Reproduce our numbers in 60 seconds
+## Reproduce my numbers in 60 seconds
 
 **No credentials. No `.env`. No network. No API keys.** The eval harness runs entirely
 against in-memory fake providers.
