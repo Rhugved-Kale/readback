@@ -46,6 +46,34 @@ PRICE_ID_COLUMN = "Stripe Price ID"
 NAME_COLUMN = "Name"
 
 
+def data_source_id(notion, database_id: str) -> str:
+    """Resolve a database ID to the ID of the data source rows live in.
+
+    Notion API version 2025-09-03 split a database from the one-or-more data
+    sources under it, and moved the query endpoint from `databases.query` to
+    `data_sources.query`. Rows belong to a data source, so every read path goes
+    through this resolution first.
+
+    The seed databases each have exactly one data source. More than one means
+    the workspace was restructured and the caller is querying an ambiguous
+    target, so fail loudly here rather than silently picking the first one and
+    writing into whichever half the API happened to list first.
+    """
+    sources = notion.databases.retrieve(database_id=database_id).get("data_sources", [])
+    if not sources:
+        raise RuntimeError(
+            f"Notion database {database_id} exposes no data sources; "
+            "check the integration has access to it."
+        )
+    if len(sources) > 1:
+        names = ", ".join(f"{s.get('name')!r} ({s['id']})" for s in sources)
+        raise RuntimeError(
+            f"Notion database {database_id} has {len(sources)} data sources: {names}. "
+            "Target one explicitly instead of guessing."
+        )
+    return sources[0]["id"]
+
+
 @dataclass
 class SeedReport:
     """Everything the run touched, for the summary table."""
@@ -136,12 +164,14 @@ def seed_notion(notion, catalog_db: str, resolved: dict[str, dict], report: Seed
     Pro 99, Team 249, Enterprise 999) already exist, and creating a fifth would
     be a silent data bug rather than a seed.
     """
+    catalog_source = data_source_id(notion, catalog_db)
+
     for product_key, info in resolved.items():
         display = info["display"]
         price_id = info["price"].id
 
-        results = notion.databases.query(
-            database_id=catalog_db,
+        results = notion.data_sources.query(
+            data_source_id=catalog_source,
             filter={"property": NAME_COLUMN, "title": {"equals": display}},
         ).get("results", [])
 

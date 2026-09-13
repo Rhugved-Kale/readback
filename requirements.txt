@@ -1,6 +1,9 @@
-stripe
-notion-client
-slack_sdk
-python-dotenv
-anthropic
-pytest
+# Pinned exactly. An unpinned notion-client silently moved from databases.query
+# to data_sources.query (API version 2025-09-03) and broke the seed at runtime;
+# every dependency here is pinned so that cannot recur. Bump deliberately.
+stripe==15.6.1
+notion-client==3.1.0
+slack_sdk==3.44.1
+python-dotenv==1.2.3
+anthropic==1.5.0
+pytest==9.1.1
