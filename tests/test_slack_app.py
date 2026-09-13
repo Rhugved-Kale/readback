@@ -81,13 +81,13 @@ def app():
     return application, client, runner
 
 
-def _envelope(text, event_id="Ev123", user="U_HUMAN", channel=CHANNEL, **extra):
-    return {
-        "event_id": event_id,
-        "event": {"type": "message", "text": text, "user": user,
-                  "channel": channel, "ts": "111.0",
-                  "client_msg_id": "cmid-1", **extra},
-    }
+def _envelope(text, event_id="Ev123", user="U_HUMAN", channel=CHANNEL,
+              ts="111.0", event_type="message", client_msg_id="cmid-1", **extra):
+    event = {"type": event_type, "text": text, "user": user,
+             "channel": channel, "ts": ts, **extra}
+    if client_msg_id is not None:
+        event["client_msg_id"] = client_msg_id
+    return {"event_id": event_id, "event": event}
 
 
 def _msg(text, user="U_HUMAN", channel=CHANNEL, **extra):
@@ -107,8 +107,8 @@ def test_plan_then_receipt_are_both_posted(app):
 
     # The plan goes out BEFORE execution, numbered, with app and action.
     assert "Plan for run" in plan_post["text"]
-    assert "1. `stripe` · *refund_payment*" in plan_post["text"]
-    assert "2. `notion` · *append_audit_row*" in plan_post["text"]
+    assert "1. `stripe` *refund_payment* — order 4417 · $99.00" in plan_post["text"]
+    assert "2. `notion` *append_audit_row* — order 4417 · refund" in plan_post["text"]
     assert plan_post["thread_ts"] == "111.0"
 
     # The receipt follows, with outcome header, calls and assertions.
@@ -243,32 +243,79 @@ def test_unparseable_request_is_refused_not_executed(app):
 # -- FIX 1: event deduplication ---------------------------------------------
 
 
-def test_duplicate_envelope_produces_one_plan_and_one_execution(app):
-    """Slack redelivers events. The second delivery must do nothing at all."""
+def test_one_message_delivered_as_two_events_runs_once(app):
+    """The real bug: message.channels AND app_mention for ONE mentioned message.
+
+    Slack delivers both, each with its own event_id. Keying dedupe on event_id
+    made them look like two separate requests, so the message ran twice and the
+    concurrency guard emitted "run already in progress" for the loser.
+
+    Same channel+ts, same client_msg_id, different event_id AND different type.
+    """
     application, client, runner = app
-    envelope = _envelope("readback: Refund order 4417 and log the reason.")
+    text = f"<@{BOT}> Refund order 4417 and log the reason."
+    common = dict(ts="777.0", client_msg_id="cmid-SAME")
 
-    first = application.handle_envelope(envelope)
-    second = application.handle_envelope(envelope)
+    first = application.handle_envelope(
+        _envelope(text, event_id="Ev_AAA", event_type="message", **common)
+    )
+    second = application.handle_envelope(
+        _envelope(text, event_id="Ev_BBB", event_type="app_mention", **common)
+    )
 
-    assert first.startswith("ran:"), first
-    assert second == "ignored:duplicate"
+    # Exactly one of the two does the work; the other leaves no trace.
+    assert {first, second} == {"ignored:mention-handled-by-app_mention", "ran:success"}
 
-    assert len(runner.calls) == 1, "the duplicate must not execute a second time"
+    assert len(runner.calls) == 1, "one message must execute exactly once"
     plans = [p for p in client.posts if "Plan for run" in p.get("text", "")]
     assert len(plans) == 1, "exactly one plan post"
-    receipts = [p for p in client.posts if "SUCCESS" in p.get("text", "")]
-    assert len(receipts) == 1, "exactly one receipt post"
+    assert not [p for p in client.posts if "already in progress" in p.get("text", "")], (
+        "the concurrency guard must never be what catches a duplicate delivery"
+    )
+
+
+def test_same_two_events_in_the_reverse_order_also_runs_once(app):
+    """app_mention may arrive first. The deferring event must still leave no trace."""
+    application, client, runner = app
+    text = f"<@{BOT}> Refund order 4417 and log the reason."
+    common = dict(ts="778.0", client_msg_id="cmid-REV")
+
+    first = application.handle_envelope(
+        _envelope(text, event_id="Ev_CCC", event_type="app_mention", **common)
+    )
+    second = application.handle_envelope(
+        _envelope(text, event_id="Ev_DDD", event_type="message", **common)
+    )
+
+    assert first == "ran:success"
+    assert second == "ignored:mention-handled-by-app_mention"
+    assert len(runner.calls) == 1
+    assert len([p for p in client.posts if "Plan for run" in p.get("text", "")]) == 1
+
+
+def test_plain_retry_of_the_same_event_is_ignored(app):
+    """A straight redelivery, same type, different event_id."""
+    application, client, runner = app
+    common = dict(ts="779.0", client_msg_id="cmid-RETRY", event_type="message")
+    text = "readback: Refund order 4417 and log the reason."
+
+    assert application.handle_envelope(
+        _envelope(text, event_id="Ev_1", **common)).startswith("ran:")
+    assert application.handle_envelope(
+        _envelope(text, event_id="Ev_2", **common)) == "ignored:duplicate"
+
+    assert len(runner.calls) == 1
+    assert len([p for p in client.posts if "Plan for run" in p.get("text", "")]) == 1
 
 
 def test_dedupe_is_not_the_concurrency_guard(app):
     """A repeat AFTER the first run finished must still be ignored.
 
     The in-flight lock releases when a run completes, so it cannot catch a late
-    redelivery. Only the event id can.
+    redelivery. Only message identity can.
     """
     application, _client, runner = app
-    envelope = _envelope("readback: Refund order 4417 and log the reason.")
+    envelope = _envelope("readback: Refund order 4417 and log the reason.", ts="780.0")
 
     application.handle_envelope(envelope)
     assert application._in_flight is None, "run finished; the guard is no longer armed"
@@ -277,31 +324,55 @@ def test_dedupe_is_not_the_concurrency_guard(app):
     assert len(runner.calls) == 1
 
 
-def test_dedupe_falls_back_through_client_msg_id_then_channel_ts(app):
+def test_event_id_is_never_the_dedupe_key(app):
+    """Two deliveries of one message differ in event_id; that must not matter."""
+    from readback.slack_app import _dedupe_keys
+
+    payload_a = _envelope("hi", event_id="Ev_X", ts="900.0", client_msg_id="cm")
+    payload_b = _envelope("hi", event_id="Ev_Y", ts="900.0", client_msg_id="cm")
+    keys_a = _dedupe_keys(payload_a, payload_a["event"])
+    keys_b = _dedupe_keys(payload_b, payload_b["event"])
+
+    assert keys_a == keys_b, "different event_ids must produce identical keys"
+    assert all("Ev_" not in k for k in keys_a), "no key may contain an event_id"
+    assert f"msg:{CHANNEL}:900.0" in keys_a
+
+
+def test_client_msg_id_catches_a_repeat_with_a_different_ts(app):
+    """Secondary guard: same composed message resent under a new ts."""
     application, _client, runner = app
+    text = "readback: Refund order 4417 and log the reason."
 
-    no_event_id = {"event": {"type": "message", "text": "readback: Refund order 4417 and log the reason.",
-                             "user": "U_HUMAN", "channel": CHANNEL, "ts": "222.0",
-                             "client_msg_id": "cmid-xyz"}}
-    assert application.handle_envelope(no_event_id).startswith("ran:")
-    assert application.handle_envelope(no_event_id) == "ignored:duplicate"
+    assert application.handle_envelope(
+        _envelope(text, event_id="Ev_A", ts="801.0", client_msg_id="cmid-DUP")
+    ).startswith("ran:")
+    assert application.handle_envelope(
+        _envelope(text, event_id="Ev_B", ts="802.0", client_msg_id="cmid-DUP")
+    ) == "ignored:duplicate"
 
-    bare = {"event": {"type": "message", "text": "readback: Refund order 4418 and log the reason.",
-                      "user": "U_HUMAN", "channel": CHANNEL, "ts": "333.0"}}
-    assert bare["event"].get("client_msg_id") is None
-    assert application.handle_envelope(bare).startswith("ran:")
-    assert application.handle_envelope(bare) == "ignored:duplicate"
+    assert len(runner.calls) == 1
 
+
+def test_distinct_messages_are_not_deduped(app):
+    """Different messages have different ts and must both run."""
+    application, _client, runner = app
+    application.handle_envelope(_envelope(
+        "readback: Refund order 4417 and log the reason.",
+        event_id="EvA", ts="811.0", client_msg_id="cmid-A"))
+    application.handle_envelope(_envelope(
+        "readback: Refund order 4418 and log the reason.",
+        event_id="EvB", ts="812.0", client_msg_id="cmid-B"))
     assert len(runner.calls) == 2
 
 
-def test_distinct_events_are_not_deduped(app):
+def test_prefixed_message_without_a_mention_still_runs(app):
+    """message.channels keeps handling "readback:" requests that do not mention."""
     application, _client, runner = app
-    application.handle_envelope(_envelope("readback: Refund order 4417 and log the reason.",
-                                          event_id="EvA"))
-    application.handle_envelope(_envelope("readback: Refund order 4418 and log the reason.",
-                                          event_id="EvB", client_msg_id="cmid-2"))
-    assert len(runner.calls) == 2
+    status = application.handle_envelope(_envelope(
+        "readback: Refund order 4417 and log the reason.",
+        event_type="message", ts="820.0", client_msg_id="cmid-P"))
+    assert status.startswith("ran:")
+    assert len(runner.calls) == 1
 
 
 def test_dedupe_cache_is_bounded(app):
@@ -350,7 +421,8 @@ def test_refund_everything_hits_the_gate_not_the_planner(app):
     for order in ("4417", "4418", "4419", "5501"):
         assert order in body                  # the exact order ids
     assert "$827.00" in body                  # the dollar total
-    assert "9001" in body and "Excluded" in body  # eval range named as excluded
+    assert "2 eval-range order(s) excluded" in body  # count only, kept short
+    assert len(body) < 700, "the held reply must not be truncated behind Show more"
 
     actions = [b for b in client.blocks() if b["type"] == "actions"]
     assert {e["action_id"] for e in actions[0]["elements"]} == {ACTION_APPROVE, ACTION_CANCEL}
