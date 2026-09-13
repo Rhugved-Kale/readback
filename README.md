@@ -1,6 +1,10 @@
 # Readback
 
-An ops agent in Slack that re-reads the state of every app it touched before it reports anything.
+Readback is an ops agent that runs the multi step changes a person would otherwise
+click through by hand. From a plain English request in Slack it plans and executes
+across three apps at once: Stripe, Notion and Slack. Before it reports anything it
+re-reads live state from every app it touched, and if a check fails it reverses its
+own writes rather than telling you the job is done.
 
 **Demo video:** https://drive.google.com/file/d/1kgxf09QgJB5-Mln5helpTa0uFVhgxFhF/view?usp=sharing
 
@@ -20,6 +24,20 @@ SILENT FAILURES  readback_on: 0/560   readback_off: 165/560
 ```
 
 A silent failure is a run that reported success while an independent oracle found the world in the wrong state.
+
+## How I tested reliability
+
+An eval harness runs 14 scenarios against 8 fault profiles, in 2 modes, 5 times each:
+1120 runs. The oracle is independent. It reads the fake providers' final state
+directly and never calls the runner, verify or the cross-checks, so a bug in the agent
+cannot mark its own run as passing. Three fault profiles return success while leaving
+state wrong: a dropped write, a write that lands with a wrong value, and two apps that
+disagree while both return 200. The baseline is the same agent with read-back off,
+same planner and executor, one flag. A live subset runs against real Stripe, Notion
+and Slack. Result: 0 of 560 silent failures with read-back on, 165 of 560 with it off,
+both matrix runs byte identical.
+
+Method and limitations: **[EVAL.md](EVAL.md)**.
 
 ## Reproduce my numbers in 60 seconds
 
