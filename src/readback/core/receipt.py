@@ -104,6 +104,10 @@ class Receipt:
     crosschecks: list[CrossCheckResult] = field(default_factory=list)
     #: Set when a human released a plan the risk gate held.
     approval: dict[str, str] = field(default_factory=dict)
+    #: Set when a fault was deliberately injected. Must be surfaced on every
+    #: representation of this receipt so an injected run can never be read as a
+    #: genuine provider failure.
+    injection: dict[str, str] = field(default_factory=dict)
     manual_remediation: list[ManualRemediation] = field(default_factory=list)
     state_diff: dict[str, Any] = field(default_factory=dict)
     finished_at: str = ""
@@ -132,6 +136,7 @@ class Receipt:
             "verifications": [asdict(v) for v in self.verifications],
             "crosschecks": [asdict(c) for c in self.crosschecks],
             "approval": self.approval,
+            "injection": self.injection,
             "manual_remediation": [asdict(m) for m in self.manual_remediation],
             "state_diff": self.state_diff,
         }
@@ -156,6 +161,14 @@ class Receipt:
             _RULE,
             f"READBACK RECEIPT   run {self.run_id}",
             _RULE,
+        ]
+        if self.injection:
+            lines += [
+                "",
+                "!! " + self.injection.get("banner", ""),
+                "!! " + self.injection.get("describes", ""),
+            ]
+        lines += [
             "",
             "REQUESTED",
             f"  {self.requested}",

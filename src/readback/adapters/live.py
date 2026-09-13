@@ -29,7 +29,7 @@ def missing_env() -> list[str]:
     return [key for key in REQUIRED_ENV if not os.environ.get(key)]
 
 
-def build_live_adapters(run_id: str) -> dict[str, object]:
+def build_live_adapters(run_id: str, injection: str | None = None) -> dict[str, object]:
     """One live adapter per provider, all sharing this run's id.
 
     `run_id` is threaded in at construction rather than read from the runner,
@@ -45,6 +45,10 @@ def build_live_adapters(run_id: str) -> dict[str, object]:
         )
 
     stripe = StripeAdapter(run_id=run_id)
-    notion = NotionAdapter(run_id=run_id, stripe_price_lookup=stripe.live_default_price)
+    notion = NotionAdapter(
+        run_id=run_id,
+        stripe_price_lookup=stripe.live_default_price,
+        injection=injection,
+    )
     slack = SlackAdapter(run_id=run_id)
     return {"stripe": stripe, "notion": notion, "slack": slack}

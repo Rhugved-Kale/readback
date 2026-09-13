@@ -43,6 +43,10 @@ AUDIT_RESULT = "Result"
 AUDIT_RUN_ID = "Run ID"
 AUDIT_TIMESTAMP = "Timestamp"
 
+#: Imported by value to keep this module free of a circular import.
+_INJECT_NOTION_DRIFT = "notion_drift"
+_INJECT_DRIFT_DOLLARS = 10
+
 #: Catalog columns.
 CATALOG_NAME = "Name"
 CATALOG_PRICE = "Price"
@@ -64,6 +68,7 @@ class NotionAdapter(LiveAdapter, Adapter):
         catalog_db: str | None = None,
         audit_db: str | None = None,
         stripe_price_lookup: Callable[[str], dict | None] | None = None,
+        injection: str | None = None,
     ) -> None:
         self.client = client or NotionClient(auth=os.environ.get("NOTION_TOKEN", ""))
         self.run_id = run_id
@@ -74,6 +79,9 @@ class NotionAdapter(LiveAdapter, Adapter):
         #: make the cross-check circular. The live factory wires this to the
         #: Stripe adapter's public live read.
         self.stripe_price_lookup = stripe_price_lookup
+        #: Deliberate fault for live demonstration. See readback/injection.py;
+        #: refused unless READBACK_ALLOW_INJECTION=1 and the adapters are live.
+        self.injection = injection
         self._source_cache: dict[str, str] = {}
 
     # -- plan --------------------------------------------------------------
@@ -167,6 +175,15 @@ class NotionAdapter(LiveAdapter, Adapter):
             "prior_stripe_price_id": prior_price_id,
         }
 
+        # DELIBERATE FAULT INJECTION. Write a price that disagrees with the one
+        # Stripe is being given. Notion still returns success, and the row will
+        # read back exactly what we wrote, so Notion is internally consistent --
+        # which is the whole point. Only a check that reads STRIPE can see it.
+        if self.injection == _INJECT_NOTION_DRIFT:
+            new_price = float(new_price) + _INJECT_DRIFT_DOLLARS
+            effect.prior_state["injected_price"] = new_price
+            effect.prior_state["injection"] = self.injection
+
         price_id = self._resolve_price_id(effect)
         properties: dict[str, Any] = {CATALOG_PRICE: {"number": new_price}}
         if price_id:
@@ -248,7 +265,16 @@ class NotionAdapter(LiveAdapter, Adapter):
         return self._reread(check)
 
     def _verify_catalog(self, effect: Effect) -> tuple[bool, str]:
-        expected_price = self._price_number(effect)
+        # Under injection, Notion is asserted against what NOTION was made to
+        # write, not against what the operator asked for. That is deliberate and
+        # is what makes the demonstration honest: each app is internally
+        # consistent on its own terms, and the incoherence only exists between
+        # them. If this asserted the operator's number instead, per-effect
+        # verify would catch it and the cross-app check would never run --
+        # proving the wrong thing.
+        expected_price = float(
+            (effect.prior_state or {}).get("injected_price", self._price_number(effect))
+        )
         expected_price_id = self._resolve_price_id(effect)
         page_id = (effect.prior_state or {}).get("page_id")
         product_name = str(

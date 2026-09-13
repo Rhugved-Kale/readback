@@ -30,6 +30,7 @@ from .core.receipt import (
     OUTCOME_SUCCESS,
     Receipt,
 )
+from . import injection as injection_mod
 from .core.runner import run as run_request
 from .planner import plan_request
 from .core import riskgate
@@ -222,6 +223,17 @@ class SlackApp:
         return self.handle_request(request, thread_ts, event.get("user", "someone"))
 
     def handle_request(self, request: str, thread_ts: str, user: str) -> str:
+        # Strip any `--inject <name>` suffix BEFORE anything else sees the text,
+        # so the planned request is byte-identical to the same request without
+        # it. The injection changes how a provider behaves, never what was asked.
+        request, injection = injection_mod.parse(request)
+
+        if injection:
+            refusal = injection_mod.refusal_reason(injection)
+            if refusal:
+                self._post(thread_ts, f":no_entry: *Injection refused*\n>{refusal}")
+                return "refused:injection"
+
         blocked = self._eval_order_guard(request)
         if blocked:
             self._post(thread_ts, blocked)
@@ -268,11 +280,14 @@ class SlackApp:
                 self._post(thread_ts, f"*Refused* — run `{run_id}`\n>{reason}")
                 return "refused:planner"
 
-            self._post(thread_ts, _plan_message(run_id, request, plan.effects, plan.enumeration))
+            self._post(
+                thread_ts,
+                _plan_message(run_id, request, plan.effects, plan.enumeration, injection),
+            )
 
             receipt = self.runner(
-                request, adapters=self._adapters(run_id), run_id=run_id, root=self.root,
-                order_resolver=self.order_resolver,
+                request, adapters=self._adapters(run_id, injection), run_id=run_id,
+                root=self.root, order_resolver=self.order_resolver, injection=injection,
             )
             self._post(thread_ts, _receipt_message(receipt))
             return f"ran:{receipt.outcome}"
@@ -342,10 +357,10 @@ class SlackApp:
 
     # -- helpers -----------------------------------------------------------
 
-    def _adapters(self, run_id: str) -> dict[str, Any]:
+    def _adapters(self, run_id: str, injection: str | None = None) -> dict[str, Any]:
         from .adapters.live import build_live_adapters
 
-        return build_live_adapters(run_id)
+        return build_live_adapters(run_id, injection=injection)
 
     def _is_trigger(self, text: str) -> bool:
         if text.lower().startswith(TRIGGER_PREFIX):
@@ -474,8 +489,21 @@ def _effect_target(effect) -> str:
     return ", ".join(f"{k}={v}" for k, v in list(params.items())[:2]) or "—"
 
 
-def _plan_message(run_id: str, request: str, effects: list, enumeration: dict | None = None) -> str:
-    lines = [f"*Plan for run* `{run_id}`", f">{request}", ""]
+def _plan_message(
+    run_id: str,
+    request: str,
+    effects: list,
+    enumeration: dict | None = None,
+    injection: str | None = None,
+) -> str:
+    lines = []
+    if injection:
+        lines += [
+            f":test_tube: *{injection_mod.banner(injection)}*",
+            f">_{injection_mod.describe(injection)}_",
+            "",
+        ]
+    lines += [f"*Plan for run* `{run_id}`", f">{request}", ""]
     if not effects:
         lines.append("_No effects planned._")
     for index, effect in enumerate(effects, 1):
@@ -630,7 +658,14 @@ def _call_row(call) -> str:
 
 
 def _receipt_message(receipt: Receipt) -> str:
-    lines = [
+    lines = []
+    if receipt.injection:
+        lines += [
+            f":test_tube: *{receipt.injection.get('banner', '')}*",
+            f">_{receipt.injection.get('describes', '')}_",
+            "",
+        ]
+    lines += [
         f"{_OUTCOME_HEADER.get(receipt.outcome, receipt.outcome.upper())} — run `{receipt.run_id}`",
         f">{receipt.reason}",
     ]

@@ -87,6 +87,21 @@ def main(argv: list[str] | None = None) -> int:
     # verify() and the duplicate-suppression checks key on.
     run_id = args.run_id or f"run_{uuid.uuid4().hex[:12]}"
 
+    from . import injection as injection_mod
+
+    request_text, injection = injection_mod.parse(request_text)
+    if injection:
+        refusal = injection_mod.refusal_reason(injection)
+        if refusal:
+            sys.stderr.write(f"injection refused: {refusal}\n")
+            return 2
+        if not args.live:
+            sys.stderr.write(
+                "injection refused: --inject requires --live. Injecting into the "
+                "fake adapters would corrupt a run that is meant to be deterministic.\n"
+            )
+            return 2
+
     if args.live:
         from .adapters.live import build_live_adapters, missing_env
 
@@ -96,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.yes and not _confirm(request_text):
             sys.stderr.write("aborted; nothing was applied\n")
             return 2
-        adapters = build_live_adapters(run_id)
+        adapters = build_live_adapters(run_id, injection=injection)
     else:
         adapters = build_fake_adapters()
 
@@ -105,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         adapters=adapters,
         run_id=run_id,
         root=args.root,
+        injection=injection,
     )
     sys.stdout.write(receipt.to_text())
 

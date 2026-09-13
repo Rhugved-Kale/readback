@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from .. import injection as injection_mod
 from ..planner import plan_request
 from ..types import STATUS_OK, Effect, EffectResult, IrreversibleEffect, RunContext
 from . import crosscheck, riskgate
@@ -52,6 +53,7 @@ def run(
     readback: bool = True,
     approved_by: str | None = None,
     order_resolver=None,
+    injection: str | None = None,
 ) -> Receipt:
     """Execute one request end to end and return its receipt.
 
@@ -74,6 +76,17 @@ def run(
         request_text=request_text, run_id=run_id
     )
     receipt = Receipt.for_run(ctx)
+
+    if injection:
+        # Raises InjectionRefused unless READBACK_ALLOW_INJECTION=1 AND the
+        # adapters are live. Checked here, before the WAL exists and before any
+        # planning, so a refused injection cannot leave a partial run behind.
+        injection_mod.check(injection, adapters)
+        receipt.injection = {
+            "name": injection,
+            "banner": injection_mod.banner(injection),
+            "describes": injection_mod.describe(injection),
+        }
     wal = WAL(ctx.run_id, root=root)
 
     before = _snapshots(adapters)

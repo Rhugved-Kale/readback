@@ -34,7 +34,14 @@ from dotenv import load_dotenv
 from .adapters.stripe_adapter import find_payment_intents_by_order, find_product_by_key, _meta
 from .seed import DEMO_ORDERS, ORDER_AMOUNTS, data_source_id
 
-#: The state every take must start from.
+#: The state every take must start from: product_key -> (display, cents).
+#: Team is here because the live suite reprices it and the notion_drift
+#: injection demo leaves it at the wrong number in BOTH Stripe and Notion.
+RESET_PRODUCTS: list[tuple[str, str, int]] = [
+    ("pro", "Pro", 9900),
+    ("team", "Team", 24900),
+]
+
 PRO_KEY = "pro"
 PRO_DISPLAY = "Pro"
 PRO_AMOUNT_CENTS = 9900
@@ -52,9 +59,9 @@ AUDIT_RUN_ID = "Run ID"
 class ResetReport:
     """Before/after for every surface this touches."""
 
-    stripe_price: dict = field(default_factory=dict)
+    stripe_prices: list[dict] = field(default_factory=list)
     stray_prices: list[dict] = field(default_factory=list)
-    catalog: dict = field(default_factory=dict)
+    catalog: list[dict] = field(default_factory=list)
     audit_rows: list[dict] = field(default_factory=list)
     slack: list[dict] = field(default_factory=list)
     orders: list[dict] = field(default_factory=list)
@@ -65,17 +72,19 @@ class ResetReport:
 # ---------------------------------------------------------------------------
 
 
-def reset_pro_price(stripe, report: ResetReport) -> str:
-    """Point the Pro product at a $99/month USD price and archive the strays.
+def reset_product_price(
+    stripe, product_key: str, amount_cents: int, report: ResetReport
+) -> str:
+    """Point a product at its baseline monthly USD price and archive the strays.
 
     Order matters: the target price must be active and promoted to default
     BEFORE any stray is archived, because Stripe refuses to archive a price
     that is still a product default.
     """
-    product = find_product_by_key(stripe, PRO_KEY, expand=["default_price"])
+    product = find_product_by_key(stripe, product_key, expand=["default_price"])
     if product is None:
         raise SystemExit(
-            f"No Stripe product with metadata product_key={PRO_KEY!r}. "
+            f"No Stripe product with metadata product_key={product_key!r}. "
             f"Run `python -m readback.seed` first."
         )
 
@@ -90,7 +99,7 @@ def reset_pro_price(stripe, report: ResetReport) -> str:
     target = next(
         (
             p for p in all_prices
-            if p.unit_amount == PRO_AMOUNT_CENTS
+            if p.unit_amount == amount_cents
             and p.currency == "usd"
             and p.recurring
             and p.recurring.interval == "month"
@@ -102,9 +111,9 @@ def reset_pro_price(stripe, report: ResetReport) -> str:
         target = stripe.Price.create(
             product=product.id,
             currency="usd",
-            unit_amount=PRO_AMOUNT_CENTS,
+            unit_amount=amount_cents,
             recurring={"interval": "month"},
-            metadata={"product_key": PRO_KEY},
+            metadata={"product_key": product_key},
         )
         action = "created"
     elif not target.active:
@@ -114,8 +123,8 @@ def reset_pro_price(stripe, report: ResetReport) -> str:
         action = "reused"
 
     # Metadata can drift if a run created the price without it.
-    if _meta(target).get("product_key") != PRO_KEY:
-        stripe.Price.modify(target.id, metadata={"product_key": PRO_KEY})
+    if _meta(target).get("product_key") != product_key:
+        stripe.Price.modify(target.id, metadata={"product_key": product_key})
 
     if before_id != target.id:
         stripe.Product.modify(product.id, default_price=target.id)
@@ -123,24 +132,26 @@ def reset_pro_price(stripe, report: ResetReport) -> str:
     else:
         promoted = "already default"
 
-    # Now safe to archive strays: anything on Pro that is not the $99 price.
+    # Now safe to archive strays: anything on this product that is not the
+    # baseline price.
     for price in all_prices:
         if price.id == target.id or not price.active:
             continue
         stripe.Price.modify(price.id, active=False)
         report.stray_prices.append(
-            {"price_id": price.id, "amount": f"${price.unit_amount / 100:,.2f}",
-             "status": "archived"}
+            {"product": product_key, "price_id": price.id,
+             "amount": f"${price.unit_amount / 100:,.2f}", "status": "archived"}
         )
 
-    report.stripe_price = {
+    report.stripe_prices.append({
+        "product": product_key,
         "product_id": product.id,
         "before_price_id": before_id or "-",
         "before_amount": f"${before_amount / 100:,.2f}" if before_amount else "-",
         "after_price_id": target.id,
-        "after_amount": f"${PRO_AMOUNT_CENTS / 100:,.2f}",
+        "after_amount": f"${amount_cents / 100:,.2f}",
         "status": f"{action}, {promoted}",
-    }
+    })
     return target.id
 
 
@@ -149,41 +160,44 @@ def reset_pro_price(stripe, report: ResetReport) -> str:
 # ---------------------------------------------------------------------------
 
 
-def reset_catalog(notion, catalog_db: str, price_id: str, report: ResetReport) -> None:
+def reset_catalog(
+    notion, catalog_db: str, display: str, amount_cents: int, price_id: str,
+    report: ResetReport,
+) -> None:
     source = data_source_id(notion, catalog_db)
     rows = notion.data_sources.query(
         data_source_id=source,
-        filter={"property": CATALOG_NAME, "title": {"equals": PRO_DISPLAY}},
+        filter={"property": CATALOG_NAME, "title": {"equals": display}},
     ).get("results", [])
 
     if not rows:
-        report.catalog = {"name": PRO_DISPLAY, "status": "SKIPPED: no such row"}
+        report.catalog.append({"name": display, "status": "SKIPPED: no such row"})
         return
 
     row = rows[0]
     before_price = _number(row, CATALOG_PRICE)
     before_id = _text(row, CATALOG_PRICE_ID)
 
-    if before_price == PRO_AMOUNT_CENTS / 100 and before_id == price_id:
+    if before_price == amount_cents / 100 and before_id == price_id:
         status = "already correct"
     else:
         notion.pages.update(
             page_id=row["id"],
             properties={
-                CATALOG_PRICE: {"number": PRO_AMOUNT_CENTS / 100},
+                CATALOG_PRICE: {"number": amount_cents / 100},
                 CATALOG_PRICE_ID: {"rich_text": [{"text": {"content": price_id}}]},
             },
         )
         status = "restored"
 
-    report.catalog = {
-        "name": PRO_DISPLAY,
+    report.catalog.append({
+        "name": display,
         "before_price": before_price,
         "before_price_id": before_id or "(empty)",
-        "after_price": PRO_AMOUNT_CENTS / 100,
+        "after_price": amount_cents / 100,
         "after_price_id": price_id,
         "status": status,
-    }
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -344,15 +358,15 @@ def print_report(report: ResetReport) -> None:
     print("READBACK RESET   demo starting state")
     print("=" * 72)
 
-    table("STRIPE  Pro default price",
-          ["product_id", "before_price_id", "before_amount", "after_price_id",
-           "after_amount", "status"],
-          [report.stripe_price] if report.stripe_price else [])
-    table("STRIPE  stray Pro prices archived", ["price_id", "amount", "status"],
+    table("STRIPE  default prices",
+          ["product", "product_id", "before_price_id", "before_amount",
+           "after_price_id", "after_amount", "status"],
+          report.stripe_prices)
+    table("STRIPE  stray prices archived", ["product", "price_id", "amount", "status"],
           report.stray_prices)
-    table("NOTION  catalog row",
+    table("NOTION  catalog rows",
           ["name", "before_price", "before_price_id", "after_price", "after_price_id", "status"],
-          [report.catalog] if report.catalog else [])
+          report.catalog)
     table("NOTION  audit rows archived", ["page_id", "run_id", "status"], report.audit_rows)
     table("SLACK   messages deleted", ["ts", "text", "status"], report.slack)
     table("STRIPE  demo orders", ["order_id", "before", "after", "amount", "status"],
@@ -407,8 +421,11 @@ def main(argv: list[str] | None = None) -> int:
     slack = WebClient(token=env["SLACK_BOT_TOKEN"])
 
     report = ResetReport()
-    price_id = reset_pro_price(stripe_sdk, report)
-    reset_catalog(notion, env["NOTION_CATALOG_DB"], price_id, report)
+    for product_key, display, amount_cents in RESET_PRODUCTS:
+        price_id = reset_product_price(stripe_sdk, product_key, amount_cents, report)
+        reset_catalog(
+            notion, env["NOTION_CATALOG_DB"], display, amount_cents, price_id, report
+        )
     reset_audit(notion, env["NOTION_AUDIT_DB"], report)
     if not args.skip_slack:
         reset_slack(slack, env["SLACK_CHANNEL_ID"], report)

@@ -76,7 +76,7 @@ def app():
     # Adapters are never built in these tests: the fake runner replaces the
     # only thing that would use them.
     application = SlackApp(client=client, channel=CHANNEL, bot_user_id=BOT, runner=runner)
-    application._adapters = lambda run_id: {}
+    application._adapters = lambda run_id, injection=None: {}
     application._debug = lambda msg: None
     return application, client, runner
 
@@ -492,3 +492,135 @@ def test_call_rows_are_fixed_width_and_truncated(app):
     assert "\u2026" in rows[1], "long action names truncate, never wrap"
     assert rows[0].startswith("ok"), "status leads the row"
     assert rows[0].rstrip().endswith("ms")
+
+
+# -- fault injection ---------------------------------------------------------
+
+
+def test_injection_suffix_is_stripped_before_planning():
+    """The planned request must be identical with and without the suffix."""
+    from readback.injection import parse
+
+    clean, name = parse("move Team to $59 everywhere --inject notion_drift")
+    assert clean == "move Team to $59 everywhere"
+    assert name == "notion_drift"
+    assert parse("move Team to $59 everywhere") == ("move Team to $59 everywhere", None)
+
+
+def test_injection_is_refused_when_the_env_flag_is_unset(app, monkeypatch):
+    application, client, runner = app
+    monkeypatch.delenv("READBACK_ALLOW_INJECTION", raising=False)
+
+    status = application.handle_message(
+        _msg("readback: Move Pro to $79 everywhere --inject notion_drift")
+    )
+
+    assert status == "refused:injection"
+    assert runner.calls == [], "nothing may run"
+    assert "READBACK_ALLOW_INJECTION=1" in client.texts[0], "the rule must be named"
+
+
+def test_unknown_injection_is_refused(app, monkeypatch):
+    application, client, runner = app
+    monkeypatch.setenv("READBACK_ALLOW_INJECTION", "1")
+    status = application.handle_message(
+        _msg("readback: Move Pro to $79 everywhere --inject wat")
+    )
+    assert status == "refused:injection"
+    assert runner.calls == []
+    assert "Unknown injection" in client.texts[0]
+
+
+def test_injection_is_hard_refused_against_fake_adapters(monkeypatch, tmp_path):
+    """The guard that keeps injection out of the eval harness permanently."""
+    from readback.adapters.fake import FakeAdapter
+    from readback.core.runner import run as real_run
+    from readback.injection import InjectionRefused
+
+    monkeypatch.setenv("READBACK_ALLOW_INJECTION", "1")
+    fakes = {n: FakeAdapter(name=n) for n in ("stripe", "notion", "slack")}
+
+    with pytest.raises(InjectionRefused) as exc:
+        real_run("Move Pro to $79 everywhere.", adapters=fakes, root=str(tmp_path),
+                 write_receipt=False, injection="notion_drift")
+
+    assert "fake adapters" in str(exc.value)
+    assert "eval harness" in str(exc.value)
+    # And nothing was applied.
+    assert all(a.store == {} for a in fakes.values())
+
+
+def test_eval_harness_never_passes_an_injection():
+    """The harness calls run() without the parameter at all."""
+    import inspect
+
+    from readback.evals import runner as eval_runner
+
+    source = inspect.getsource(eval_runner)
+    # The word appears in the harness's own prose about fault PROFILES, which
+    # are a different thing. What must never appear is the kwarg.
+    assert "injection=" not in source, "the eval harness must not pass injection="
+    assert "injection_mod" not in source
+
+
+def test_banner_appears_in_all_three_receipt_surfaces(monkeypatch):
+    """Slack post, receipt.json and receipt.txt must each carry the label."""
+    import json
+
+    from readback import injection as inj
+    from readback.core.receipt import Receipt
+    from readback.slack_app import _receipt_message
+
+    receipt = Receipt(run_id="run_x", requested="Move Team to $59 everywhere",
+                      started_at="now")
+    receipt.outcome = "failure"
+    receipt.reason = "Cross-app check failed."
+    receipt.injection = {
+        "name": inj.NOTION_DRIFT,
+        "banner": inj.banner(inj.NOTION_DRIFT),
+        "describes": inj.describe(inj.NOTION_DRIFT),
+    }
+
+    expected = "FAULT INJECTED: notion_drift. Deliberate. Not a real provider failure."
+
+    # 1. Slack
+    assert expected in _receipt_message(receipt)
+    # 2. JSON
+    assert expected in json.dumps(receipt.to_dict())
+    assert json.loads(json.dumps(receipt.to_dict()))["injection"]["name"] == "notion_drift"
+    # 3. Text
+    assert expected in receipt.to_text()
+
+
+def test_banner_appears_on_the_slack_plan_post(app, monkeypatch):
+    from readback.slack_app import _plan_message
+    from readback.planner import plan_request
+
+    plan = plan_request("Move Pro to $79 everywhere.")
+    text = _plan_message("run_y", "Move Pro to $79 everywhere.", plan.effects,
+                         plan.enumeration, "notion_drift")
+    assert "FAULT INJECTED: notion_drift" in text
+    assert "Deliberate" in text
+
+
+def test_injected_notion_write_disagrees_but_verifies_on_its_own_terms():
+    """Notion stays internally consistent; only a cross-app read sees the gap."""
+    from readback.adapters.notion_adapter import NotionAdapter
+    from readback.types import Effect
+
+    effect = Effect(app="notion", action="update_catalog_row",
+                    params={"name": "Team", "price": 59, "previous_price": 249},
+                    idempotency_key="notion:catalog:team-5900")
+    adapter = NotionAdapter(client=object(), run_id="r", catalog_db="c", audit_db="a",
+                            injection="notion_drift")
+    # Simulate what _apply_catalog does to the intended number.
+    effect.prior_state = {}
+    intended = adapter._price_number(effect)
+    drifted = intended + 10
+    effect.prior_state["injected_price"] = drifted
+
+    assert intended == 59.0
+    assert drifted == 69.0
+    # verify() now expects what Notion was made to write, not what was asked --
+    # so per-effect verify passes and the cross-app check is what must fail.
+    assert float(effect.prior_state["injected_price"]) == 69.0
