@@ -90,27 +90,65 @@ def find_product_by_key(client, product_key: str, expand: list[str] | None = Non
 
 
 def find_payment_intents_by_order(client, order_id: str) -> list:
-    """All PaymentIntents carrying metadata order_id. Search first, list fallback.
+    """All PaymentIntents carrying metadata order_id, from search AND list.
 
-    Same reason as find_product_by_key: a PaymentIntent created by the seed or
-    by reset.py is not immediately in the search index, and the live tests run
-    right after creating their fixtures.
+    Always merges. The search index is never allowed to short-circuit the list
+    call, however confident its answer looks.
+
+    WHY, precisely: a STALE NON-EMPTY search result is more dangerous than an
+    empty one, because it looks like an answer. Empty triggers a fallback and
+    the caller recovers. A stale set of three already-refunded intents, with
+    the freshly created refundable one still missing from the index, is
+    indistinguishable from a complete answer -- so the caller confidently picks
+    a spent intent and the refund fails. Observed live: two of four demo resets
+    left the new intent invisible to search for over a minute while `list`
+    returned it immediately.
+
+    This is the same class of bug as trusting a write response. The provider
+    returned something well-formed and plausible, and the mistake was treating
+    "the provider replied" as "the provider told the truth". Read-back exists
+    because a response is evidence, not proof; the search index deserves exactly
+    the same suspicion, and for the same reason.
+
+    `list` reads the primary store and is immediately consistent, so where the
+    two disagree the list copy wins.
+
+    Ordering: refundable intents first, then newest first. That serves both
+    callers without either having to know about the other -- apply() wants an
+    intent it can still refund, and verify() re-resolving after a refund wants
+    the one that was just refunded, which is the newest.
     """
-    hits = client.PaymentIntent.search(
-        query=f"metadata['order_id']:'{order_id}'", limit=100
-    ).data
-    if hits:
-        return list(hits)
+    merged: dict[str, Any] = {}
 
-    found = []
+    # Search: fast, indexed, possibly stale. Contributes, never decides.
+    for intent in client.PaymentIntent.search(
+        query=f"metadata['order_id']:'{order_id}'", limit=100
+    ).data:
+        merged[intent.id] = intent
+
+    # List: authoritative. Overwrites the search copy where both exist, because
+    # the search copy may describe an older version of the same object.
     scanned = 0
     for intent in client.PaymentIntent.list(limit=100).auto_paging_iter():
         scanned += 1
         if scanned > FALLBACK_SCAN_LIMIT:
             break
         if _meta(intent).get("order_id") == str(order_id):
-            found.append(intent)
-    return found
+            merged[intent.id] = intent
+
+    def sort_key(intent) -> tuple[int, int]:
+        refundable = 0 if _is_refundable(client, intent) else 1
+        return (refundable, -int(getattr(intent, "created", 0) or 0))
+
+    return sorted(merged.values(), key=sort_key)
+
+
+def _is_refundable(client, intent) -> bool:
+    """True when this intent succeeded and has no succeeded refund against it."""
+    if getattr(intent, "status", None) != "succeeded":
+        return False
+    refunds = client.Refund.list(payment_intent=intent.id, limit=100).data
+    return not any(r.status == "succeeded" for r in refunds)
 
 
 def idem_key(effect_key: str, op: str, body: dict) -> str:
