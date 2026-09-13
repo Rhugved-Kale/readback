@@ -1,0 +1,6 @@
+stripe
+notion-client
+slack_sdk
+python-dotenv
+anthropic
+pytest
