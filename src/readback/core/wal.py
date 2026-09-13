@@ -94,6 +94,29 @@ class WAL:
             if record["state"] == COMMITTED
         ]
 
+    def reversal_candidates(self) -> list[dict[str, Any]]:
+        """Every effect that may have left a write behind, in commit order.
+
+        COMMITTED *and* FAILED, deliberately.
+
+        A FAILED record does not mean the write is absent. A provider that times
+        out after committing, or 500s after committing, produces exactly this:
+        apply() reported an error, the WAL recorded FAILED, and the row is
+        sitting in the provider anyway. Rolling back only the COMMITTED records
+        leaves that row orphaned -- which is precisely the partial state the
+        eval harness caught (S10 under timeout_after_commit, seeds 11200/11202).
+
+        Attempting a reversal that turns out to be unnecessary is cheap: the
+        Adapter contract requires compensate() to be idempotent and to report
+        'skipped' when there is nothing to reverse. Skipping a reversal that
+        WAS necessary leaves live state wrong forever. The asymmetry decides it.
+        """
+        return [
+            record
+            for record in self._terminal_records()
+            if record["state"] in (COMMITTED, FAILED)
+        ]
+
     def _terminal_records(self) -> list[dict[str, Any]]:
         """Latest non-INTENDED record per key, in the order those records were written."""
         latest: dict[str, dict[str, Any]] = {}

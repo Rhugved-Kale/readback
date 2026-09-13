@@ -50,6 +50,12 @@ class Metrics:
     label: str
     total: int = 0
     task_success: int = 0
+    success_n: int = 0
+    success_ok: int = 0
+    refusal_n: int = 0
+    refusal_ok: int = 0
+    compensation_n: int = 0
+    compensation_ok: int = 0
     silent_failures: int = 0
     false_alarms: int = 0
     forbidden: int = 0
@@ -85,11 +91,38 @@ class Metrics:
     def partial_state_rate(self) -> float:
         return self._rate(self.partial_state)
 
+    # -- the three honest correctness rates, each over its own denominator --
+
+    @property
+    def success_correctness(self) -> float | None:
+        return None if not self.success_n else self.success_ok / self.success_n
+
+    @property
+    def refusal_correctness(self) -> float | None:
+        return None if not self.refusal_n else self.refusal_ok / self.refusal_n
+
+    @property
+    def compensation_correctness(self) -> float | None:
+        return None if not self.compensation_n else self.compensation_ok / self.compensation_n
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "label": self.label,
             "total": self.total,
             "task_success_rate": round(self.task_success_rate, 4),
+            "success_correctness": (
+                None if self.success_correctness is None else round(self.success_correctness, 4)
+            ),
+            "success_denominator": self.success_n,
+            "refusal_correctness": (
+                None if self.refusal_correctness is None else round(self.refusal_correctness, 4)
+            ),
+            "refusal_denominator": self.refusal_n,
+            "compensation_correctness": (
+                None if self.compensation_correctness is None
+                else round(self.compensation_correctness, 4)
+            ),
+            "compensation_denominator": self.compensation_n,
             "silent_failure_rate": round(self.silent_failure_rate, 4),
             "false_alarm_rate": round(self.false_alarm_rate, 4),
             "forbidden_effect_rate": round(self.forbidden_effect_rate, 4),
@@ -117,6 +150,16 @@ def aggregate(label: str, records: Iterable[RunRecord]) -> Metrics:
     for record in records:
         if record.task_success:
             metrics.task_success += 1
+
+        if record.success_correct is not None:
+            metrics.success_n += 1
+            metrics.success_ok += int(record.success_correct)
+        if record.refusal_correct is not None:
+            metrics.refusal_n += 1
+            metrics.refusal_ok += int(record.refusal_correct)
+        if record.compensation_correct is not None:
+            metrics.compensation_n += 1
+            metrics.compensation_ok += int(record.compensation_correct)
         if record.silent_failure:
             metrics.silent_failures += 1
         if record.false_alarm:

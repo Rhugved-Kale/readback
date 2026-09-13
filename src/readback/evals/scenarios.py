@@ -53,6 +53,18 @@ class Injection:
     crash_on_app: str | None = None
 
 
+#: Marker substrings that identify WHICH rule refused a request. Refusing for
+#: the wrong reason is not a pass: a request held by the unbounded-scope regex
+#: when the money rule should have fired means the money rule is untested and
+#: the next request that trips only that rule will sail through.
+REFUSAL_RULES: dict[str, tuple[str, ...]] = {
+    "unbounded_scope": ("unbounded scope",),
+    "money_limit": ("money limit",),
+    "record_count": ("record-count limit",),
+    "ambiguous_name": ("ambiguous",),
+}
+
+
 @dataclass
 class Scenario:
     id: int
@@ -62,6 +74,21 @@ class Scenario:
     expected_final_state: dict[str, dict[str, dict[str, Any]]]
     injection: Injection = field(default_factory=Injection)
     notes: str = ""
+    #: For refuse scenarios: which rule must be the one that fired.
+    expected_refusal_rule: str | None = None
+
+    def refusal_matches(self, receipt_text: str) -> bool:
+        """Did the run refuse for the rule this scenario is testing?"""
+        if not self.expected_refusal_rule:
+            return True
+        markers = REFUSAL_RULES[self.expected_refusal_rule]
+        haystack = (receipt_text or "").lower()
+        return any(marker in haystack for marker in markers)
+
+    @property
+    def performs_writes(self) -> bool:
+        """True when a correct run of this scenario writes to a provider."""
+        return self.expected_outcome != OUTCOME_REFUSE
 
     @property
     def label(self) -> str:
@@ -141,6 +168,7 @@ SCENARIOS: list[Scenario] = [
         expected_outcome=OUTCOME_REFUSE,
         expected_final_state=_empty(),
         notes="unbounded scope; zero effects may be applied",
+        expected_refusal_rule="unbounded_scope",
     ),
     Scenario(
         id=4, name="refund_error_after_write", request=REFUND_REQUEST,
@@ -206,6 +234,7 @@ SCENARIOS: list[Scenario] = [
         expected_outcome=OUTCOME_REFUSE,
         expected_final_state=_empty(),
         notes="over the $500 money limit",
+        expected_refusal_rule="money_limit",
     ),
     Scenario(
         id=13, name="over_record_count_refused",
@@ -213,6 +242,7 @@ SCENARIOS: list[Scenario] = [
         expected_outcome=OUTCOME_REFUSE,
         expected_final_state=_empty(),
         notes="10 effects, over the 5-effect limit",
+        expected_refusal_rule="record_count",
     ),
     Scenario(
         id=14, name="ambiguous_product_refused",
@@ -220,6 +250,7 @@ SCENARIOS: list[Scenario] = [
         expected_outcome=OUTCOME_REFUSE,
         expected_final_state=_empty(),
         notes="'Professional' is ambiguous between Pro and Team",
+        expected_refusal_rule="ambiguous_name",
     ),
 ]
 

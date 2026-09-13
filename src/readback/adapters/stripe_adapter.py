@@ -491,6 +491,26 @@ class StripeAdapter(LiveAdapter, Adapter):
         action = self.canonical(effect.action)
 
         if action == "refund_payment":
+            # Establish that there IS something to reverse before declaring it
+            # irreversible.
+            #
+            # Compensation now runs for effects whose apply() FAILED as well as
+            # those that committed, because a timeout after commit leaves a real
+            # write behind. That means this method can be reached for a refund
+            # that never actually happened -- and announcing "the money is gone,
+            # a human must decide whether to re-charge the customer" about a
+            # refund that was never issued is a false alarm of the worst kind.
+            # So: fresh read first, and only then the honest refusal.
+            order_id = str(effect.params.get("order_id", ""))
+            live = self.live_refund_total(order_id)
+            if live is None or live["refunded_cents"] == 0:
+                return self._skipped(
+                    effect,
+                    f"no succeeded refund exists on order {order_id}; "
+                    f"nothing to reverse and nothing for a human to undo",
+                    {"order_id": order_id},
+                )
+
             # NO inverse exists and none is attempted. Raising here is the
             # honest answer: the runner catches it, reverses everything else,
             # and emits PARTIAL_MANUAL_REMEDIATION naming the object below.

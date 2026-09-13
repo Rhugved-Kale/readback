@@ -25,12 +25,32 @@ TIMEOUT_AFTER_COMMIT = "timeout_after_commit"
 RATE_LIMIT_STORM = "rate_limit_storm"
 STALE_READ = "stale_read"
 
+# -- silent corruption profiles --------------------------------------------
+# The four profiles above all make a write VISIBLY fail. An agent that merely
+# checks status codes still learns something is wrong. These three return a
+# plausible 200 and leave the world incorrect, so the response carries no
+# signal at all. They are the failure mode read-back exists for, and the only
+# way to catch them is to go and look at the state afterwards.
+SILENT_WRITE_DROP = "silent_write_drop"
+SILENT_PARTIAL_WRITE = "silent_partial_write"
+DIVERGENT_WRITE = "divergent_write"
+
+#: Profiles whose writes report success while corrupting state.
+SILENT_PROFILES: tuple[str, ...] = (
+    SILENT_WRITE_DROP,
+    SILENT_PARTIAL_WRITE,
+    DIVERGENT_WRITE,
+)
+
 PROFILES: tuple[str, ...] = (
     NONE,
     ERROR_AFTER_WRITE,
     TIMEOUT_AFTER_COMMIT,
     RATE_LIMIT_STORM,
     STALE_READ,
+    SILENT_WRITE_DROP,
+    SILENT_PARTIAL_WRITE,
+    DIVERGENT_WRITE,
 )
 
 APPS: tuple[str, ...] = ("stripe", "notion", "slack")
@@ -82,6 +102,7 @@ def configs_for(plan: FaultPlan) -> Mapping[str, FaultConfig]:
         return configs
 
     target = configs[plan.target_app]
+    target.corruption_seed = plan.seed
     if plan.profile == ERROR_AFTER_WRITE:
         target.fail_after_write = True
     elif plan.profile == TIMEOUT_AFTER_COMMIT:
@@ -90,4 +111,14 @@ def configs_for(plan: FaultPlan) -> Mapping[str, FaultConfig]:
         target.rate_limit_storm = STORM_LENGTH
     elif plan.profile == STALE_READ:
         target.stale_read = STALE_READS
+    elif plan.profile == SILENT_WRITE_DROP:
+        target.silent_write_drop = True
+    elif plan.profile == SILENT_PARTIAL_WRITE:
+        target.silent_partial_write = True
+    elif plan.profile == DIVERGENT_WRITE:
+        target.divergent_write = True
     return configs
+
+
+def is_silent(profile: str) -> bool:
+    return profile in SILENT_PROFILES

@@ -44,13 +44,20 @@ def _pct(value: float) -> str:
     return f"{value * 100:.1f}%"
 
 
+def _rate(value: float | None, denominator: int) -> str:
+    """Render a rate with its denominator, or n/a when the bucket is empty."""
+    if value is None or not denominator:
+        return "n/a"
+    return f"{value * 100:.1f}% ({denominator})"
+
+
 def summary_table(records: list[RunRecord], profiles: tuple[str, ...]) -> str:
     """readback_on beside readback_off, one row per fault profile."""
     grouped = by_mode_and_profile(records, MODES, profiles)
     lines: list[str] = []
 
-    lines.append("| fault profile | mode | runs | task success | SILENT FAIL | false alarm | forbidden | partial state | run p50/p95 ms | recovery p50/p95 ms |")
-    lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+    lines.append("| fault profile | mode | runs | success corr. | refusal corr. | compensation corr. | SILENT FAIL | false alarm | forbidden | partial state | run p50/p95 ms | recovery p50/p95 ms |")
+    lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
 
     for profile in list(profiles) + ["ALL"]:
         for mode in MODES:
@@ -59,7 +66,10 @@ def summary_table(records: list[RunRecord], profiles: tuple[str, ...]) -> str:
                 continue
             name = profile if mode == MODE_ON else ""
             lines.append(
-                f"| {name} | {mode} | {m.total} | {_pct(m.task_success_rate)} | "
+                f"| {name} | {mode} | {m.total} | "
+                f"{_rate(m.success_correctness, m.success_n)} | "
+                f"{_rate(m.refusal_correctness, m.refusal_n)} | "
+                f"{_rate(m.compensation_correctness, m.compensation_n)} | "
                 f"**{m.silent_failures}** ({_pct(m.silent_failure_rate)}) | "
                 f"{_pct(m.false_alarm_rate)} | {_pct(m.forbidden_effect_rate)} | "
                 f"{_pct(m.partial_state_rate)} | "
@@ -93,6 +103,22 @@ def per_scenario_table(records: list[RunRecord]) -> str:
     return "\n".join(lines)
 
 
+def silent_breakdown(records: list[RunRecord], mode: str) -> str:
+    """Silent failures grouped by scenario and fault profile."""
+    silent = [r for r in records if r.mode == mode and r.silent_failure]
+    if not silent:
+        return f"None for `{mode}`."
+    counts: dict[tuple[int, str, str], int] = {}
+    for record in silent:
+        key = (record.scenario_id, record.scenario_name, record.profile)
+        counts[key] = counts.get(key, 0) + 1
+    lines = ["| scenario | fault profile | silent failures |", "| --- | --- | ---: |"]
+    for (sid, sname, profile), count in sorted(counts.items()):
+        lines.append(f"| S{sid:02d} {sname} | {profile} | {count} |")
+    lines.append(f"| **total** | | **{len(silent)}** |")
+    return "\n".join(lines)
+
+
 def write_reports(
     records: list[RunRecord], profiles: tuple[str, ...], out_dir: Path, live: bool
 ) -> tuple[str, str]:
@@ -108,6 +134,20 @@ def write_reports(
         f"SILENT FAILURES  readback_on: {silent_on}/{len(on)}   "
         f"readback_off: {silent_off}/{len(off)}"
     )
+
+    on_m = aggregate("on", on)
+    off_m = aggregate("off", off)
+    correctness_lines = [
+        f"success_correctness       readback_on: "
+        f"{_rate(on_m.success_correctness, on_m.success_n):<14} "
+        f"readback_off: {_rate(off_m.success_correctness, off_m.success_n)}",
+        f"refusal_correctness       readback_on: "
+        f"{_rate(on_m.refusal_correctness, on_m.refusal_n):<14} "
+        f"readback_off: {_rate(off_m.refusal_correctness, off_m.refusal_n)}",
+        f"compensation_correctness  readback_on: "
+        f"{_rate(on_m.compensation_correctness, on_m.compensation_n):<14} "
+        f"readback_off: {_rate(off_m.compensation_correctness, off_m.compensation_n)}",
+    ]
 
     # -- summary.md ---------------------------------------------------------
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -152,8 +192,13 @@ def write_reports(
         "## Headline",
         "",
         "```",
+        *correctness_lines,
         headline,
         "```",
+        "",
+        "## Silent failure breakdown (readback_off)",
+        "",
+        silent_breakdown(records, MODE_OFF),
         "",
     ]
     (out_dir / "summary.md").write_text("\n".join(summary), encoding="utf-8")
@@ -213,7 +258,7 @@ def write_reports(
         failure_lines += ["", "```bash", record.repro(), "```", ""]
     (out_dir / "failures.md").write_text("\n".join(failure_lines), encoding="utf-8")
 
-    return table, headline
+    return table, headline, correctness_lines
 
 
 # ---------------------------------------------------------------------------
@@ -356,13 +401,18 @@ def main(argv: list[str] | None = None) -> int:
         base_seed=args.seed if args.seed is not None else 1000,
     )
 
-    table, headline = write_reports(records, profiles, out_dir, live=False)
+    table, headline, correctness_lines = write_reports(records, profiles, out_dir, live=False)
 
     print()
     print(table)
     print()
+    print("SILENT FAILURE BREAKDOWN (readback_off)")
+    print(silent_breakdown(records, MODE_OFF))
+    print()
     print(f"wrote {out_dir/'summary.md'}, {out_dir/'results.json'}, {out_dir/'failures.md'}")
     print()
+    for line in correctness_lines:
+        print(line)
     print(headline)
     return 0
 

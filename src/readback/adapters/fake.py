@@ -42,12 +42,44 @@ class FaultConfig:
     #: Serve pre-write state for the first N verify reads.
     stale_read: int = 0
 
+    # -- silent corruption -------------------------------------------------
+    # The three below are qualitatively different from the four above. Those
+    # all make a write VISIBLY fail: the caller sees a 500, a timeout, a 429.
+    # An agent that simply believes error codes still notices something is
+    # wrong. These three return a plausible 200 and leave the world incorrect,
+    # which is the failure no amount of checking the response can catch. They
+    # are the reason read-back exists.
+
+    #: Provider returns 200 with a plausible body; the state is never mutated.
+    silent_write_drop: bool = False
+
+    #: The write lands with a WRONG value (amount off by a factor, price set to
+    #: a different number, a field left stale). Provider returns 200.
+    silent_partial_write: bool = False
+
+    #: The write lands with a value that contradicts what a sibling app
+    #: committed for the same logical change. Provider returns 200.
+    divergent_write: bool = False
+
+    #: Makes the corruption deterministic across repeats.
+    corruption_seed: int = 0
+
     def any_enabled(self) -> bool:
         return bool(
             self.fail_after_write
             or self.timeout_after_commit
             or self.rate_limit_storm
             or self.stale_read
+            or self.silent_write_drop
+            or self.silent_partial_write
+            or self.divergent_write
+        )
+
+    @property
+    def is_silent(self) -> bool:
+        """True for faults that report success while corrupting state."""
+        return bool(
+            self.silent_write_drop or self.silent_partial_write or self.divergent_write
         )
 
 
@@ -105,7 +137,30 @@ class FakeAdapter(Adapter):
                 effect, STATUS_FAILED, started, error="429 rate_limited: retry budget exhausted"
             )
 
+        if self.faults.silent_write_drop:
+            # The write never happens. The provider says it did, with an id and
+            # everything. Nothing in the response distinguishes this from a
+            # real success -- only a later read does.
+            self._log("apply", effect, "200 OK returned; write silently dropped")
+            return self._result(
+                effect,
+                STATUS_OK,
+                started,
+                provider_response={"id": self._provider_id(effect), "ok": True},
+            )
+
         self._write(effect)
+
+        if self.faults.silent_partial_write or self.faults.divergent_write:
+            corrupted = self._corrupt(effect)
+            self._log("apply", effect, f"200 OK returned; stored {corrupted}")
+            return self._result(
+                effect,
+                STATUS_OK,
+                started,
+                provider_response={"id": self._provider_id(effect), "ok": True},
+            )
+
         self._log("apply", effect, "write committed")
 
         if self.faults.fail_after_write:
@@ -213,6 +268,54 @@ class FakeAdapter(Adapter):
         self.write_count[effect.idempotency_key] = (
             self.write_count.get(effect.idempotency_key, 0) + 1
         )
+
+    def _corrupt(self, effect: Effect) -> dict[str, Any]:
+        """Mutate the stored record so it no longer matches what was intended.
+
+        Deterministic: the same effect under the same corruption_seed always
+        lands the same wrong value, so a failing matrix cell reproduces exactly.
+
+        `divergent_write` deliberately picks the PREVIOUS value where the effect
+        carries one. That is the cross-app incoherence case in its sharpest
+        form: Stripe moves Pro to $79 while Notion still says $99, both apps
+        return 200, and each app is internally consistent -- the system is only
+        wrong when you look at two apps at once.
+        """
+        record = self.store.get(effect.idempotency_key)
+        if record is None:
+            return {}
+
+        divergent = self.faults.divergent_write
+        offset = 1 + (self.faults.corruption_seed % 7)
+
+        # Prefer the field that carries the meaning of the write.
+        for field_name in ("amount_cents", "unit_amount_cents", "price"):
+            if field_name not in record:
+                continue
+            original = record[field_name]
+            if not isinstance(original, (int, float)):
+                continue
+            if divergent and "previous_price" in record:
+                # Disagree with the sibling app by keeping the OLD value.
+                record[field_name] = record["previous_price"]
+            elif divergent:
+                record[field_name] = int(original) + 100 * offset
+            else:
+                # Off by a factor -- the classic audit-log corruption.
+                record[field_name] = int(original) * 10
+            return {field_name: record[field_name]}
+
+        # Text-only writes (Slack): corrupt the message body.
+        if "text" in record and isinstance(record["text"], str):
+            record["text"] = record["text"].replace("now", "still") + " [unverified]"
+            return {"text": record["text"]}
+
+        # Anything else: stale a string field so the record no longer matches.
+        for field_name, value in record.items():
+            if isinstance(value, str):
+                record[field_name] = f"{value}-stale{offset}"
+                return {field_name: record[field_name]}
+        return {}
 
     def _read(self, idempotency_key: str) -> dict[str, Any] | None:
         """A fresh provider read. Serves stale state while the fault is armed."""

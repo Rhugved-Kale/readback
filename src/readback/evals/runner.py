@@ -62,6 +62,7 @@ class RunRecord:
     run_latency_ms: float = 0.0
     recovery_time_ms: float | None = None
 
+    refusal_rule_matched: bool = True
     forbidden: list[str] = field(default_factory=list)
     applied_effects: int = 0
     double_writes: dict[str, int] = field(default_factory=dict)
@@ -100,7 +101,47 @@ class RunRecord:
 
     @property
     def task_success(self) -> bool:
+        """Legacy combined rate. Kept for continuity; the three correctness
+        rates below are the honest breakdown, each over its own denominator."""
         return self.reported_success and self.oracle_correct
+
+    # -- the three correctness rates, each over its own denominator --------
+
+    @property
+    def success_correct(self) -> bool | None:
+        """Scenarios expected to SUCCEED: did the task actually get done?
+
+        None means "not in this denominator", so a scenario that was never
+        supposed to succeed cannot drag the rate down.
+        """
+        if self.expected_outcome != "success":
+            return None
+        return self.reported_success and self.oracle_correct
+
+    @property
+    def refusal_correct(self) -> bool | None:
+        """Scenarios expected to REFUSE: refused for the RIGHT rule.
+
+        Three conditions, all required. Refusing is not enough: refusing for
+        the wrong reason means the rule under test never ran, and it leaves
+        zero writes behind either way, so state alone cannot tell them apart.
+        """
+        if self.expected_outcome != "refuse":
+            return None
+        return (
+            self.reported_outcome in REPORTED_REFUSE
+            and self.refusal_rule_matched
+            and self.oracle_correct
+        )
+
+    @property
+    def compensation_correct(self) -> bool | None:
+        """Scenarios expected to COMPENSATE: failed loudly AND left nothing behind."""
+        if self.expected_outcome != "compensate":
+            return None
+        ended_badly = self.reported_outcome in (OUTCOME_FAILURE, OUTCOME_PARTIAL)
+        no_residue = not any(keys for keys in (self.oracle_residual or {}).values())
+        return ended_badly and no_residue
 
     @property
     def partial_state(self) -> bool:
@@ -136,8 +177,12 @@ class RunRecord:
             "recovery_time_ms": (
                 None if self.recovery_time_ms is None else round(self.recovery_time_ms, 3)
             ),
+            "refusal_rule_matched": self.refusal_rule_matched,
             "forbidden": self.forbidden,
             "applied_effects": self.applied_effects,
+            "success_correct": self.success_correct,
+            "refusal_correct": self.refusal_correct,
+            "compensation_correct": self.compensation_correct,
             "double_writes": self.double_writes,
             "silent_failure": self.silent_failure,
             "false_alarm": self.false_alarm,
@@ -300,6 +345,9 @@ def execute_cell(
     record.oracle_detail = verdict.detail
     record.oracle_residual = verdict.residual
 
+    record.refusal_rule_matched = scenario.refusal_matches(
+        f"{receipt.reason} {receipt.gate.get('reason', '')}"
+    )
     record.forbidden, record.double_writes = _detect_forbidden(receipt, adapters, scenario)
     return record
 

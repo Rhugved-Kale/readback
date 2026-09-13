@@ -224,7 +224,14 @@ def run(
     # Reverse order, so later writes are undone before the writes they depended
     # on. An effect with no inverse does not stop the walk: everything else is
     # still reversed, and the un-reversible one is collected for the receipt.
-    for record in reversed(wal.committed_effects()):
+    #
+    # Candidates are COMMITTED *and* FAILED. A failed apply() is not evidence
+    # that the write is absent -- a provider that times out after committing
+    # leaves the row in place and the WAL saying FAILED. Compensating only the
+    # COMMITTED ones orphans it. compensate() is contractually idempotent and
+    # reports 'skipped' when there is nothing there, so the cost of asking is a
+    # no-op and the cost of not asking is permanent.
+    for record in reversed(wal.reversal_candidates()):
         # Rebuilt from the WAL, not from memory, so this path behaves the same
         # in a restarted process as it does here. prior_state rides along.
         effect = Effect.from_record(record)

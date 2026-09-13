@@ -1,6 +1,6 @@
 # Readback eval results
 
-Generated 2026-09-13T17:46:04+00:00  |  fake adapters  |  700 runs
+Generated 2026-09-13T17:54:27+00:00  |  fake adapters  |  1120 runs
 
 `readback_off` is the naive-agent baseline: it skips every read-back assertion and every cross-app check, and reports success whenever the provider's own response said ok. Both modes share one code path; the only difference is the flag.
 
@@ -15,61 +15,112 @@ Reading the other columns correctly:
 
 ## By fault profile
 
-| fault profile | mode | runs | task success | SILENT FAIL | false alarm | forbidden | partial state | run p50/p95 ms | recovery p50/p95 ms |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| none | readback_on | 70 | 64.3% | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.55 | 0.001 / 0.002 (n=5) |
-|  | readback_off | 70 | 64.3% | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.52 | n/a (no rollback) |
+| fault profile | mode | runs | success corr. | refusal corr. | compensation corr. | SILENT FAIL | false alarm | forbidden | partial state | run p50/p95 ms | recovery p50/p95 ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| none | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.62 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.57 | n/a (no rollback) |
 | | | | | | | | | | |
-| error_after_write | readback_on | 70 | 64.3% | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.42 / 0.58 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 0.0% | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.38 / 0.50 | n/a (no rollback) |
+| error_after_write | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.44 / 0.57 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.39 / 0.50 | n/a (no rollback) |
 | | | | | | | | | | |
-| timeout_after_commit | readback_on | 70 | 64.3% | **0** (0.0%) | 0.0% | 0.0% | 2.9% | 0.43 / 0.63 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 0.0% | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.38 / 0.51 | n/a (no rollback) |
+| timeout_after_commit | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.42 / 0.60 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.37 / 0.52 | n/a (no rollback) |
 | | | | | | | | | | |
-| rate_limit_storm | readback_on | 70 | 64.3% | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.39 / 0.60 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 64.3% | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.51 | n/a (no rollback) |
+| rate_limit_storm | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.55 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.54 | n/a (no rollback) |
 | | | | | | | | | | |
-| stale_read | readback_on | 70 | 64.3% | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.50 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 64.3% | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.47 | n/a (no rollback) |
+| stale_read | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.55 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.51 | n/a (no rollback) |
 | | | | | | | | | | |
-| ALL | readback_on | 350 | 64.3% | **0** (0.0%) | 0.0% | 0.0% | 0.6% | 0.39 / 0.57 | 0.001 / 0.002 (n=25) |
-|  | readback_off | 350 | 38.6% | **15** (4.3%) | 25.7% | 0.0% | 2.9% | 0.38 / 0.51 | n/a (no rollback) |
+| silent_write_drop | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 22.9% | 0.0% | 0.50 / 0.66 | 0.001 / 0.001 (n=50) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.53 | n/a (no rollback) |
+| | | | | | | | | | |
+| silent_partial_write | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 42.9% | 0.0% | 0.50 / 0.67 | 0.001 / 0.001 (n=50) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.52 | n/a (no rollback) |
+| | | | | | | | | | |
+| divergent_write | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 42.9% | 0.0% | 0.51 / 0.65 | 0.001 / 0.001 (n=50) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.53 | n/a (no rollback) |
+| | | | | | | | | | |
+| ALL | readback_on | 560 | 62.5% (360) | 100.0% (160) | 100.0% (40) | **0** (0.0%) | 0.0% | 13.6% | 0.0% | 0.42 / 0.62 | 0.001 / 0.001 (n=175) |
+|  | readback_off | 560 | 37.5% (360) | 100.0% (160) | 0.0% (40) | **165** (29.5%) | 16.1% | 0.0% | 1.8% | 0.38 / 0.53 | n/a (no rollback) |
 
 ## By scenario
 
 | scenario | expected | mode | runs | task success | SILENT FAIL | forbidden |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| S01 refund_happy_path | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S02 reprice_happy_path | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S03 unbounded_scope_refused | refuse | readback_on | 25 | 0.0% | **0** | 0 |
-|  |  | readback_off | 25 | 0.0% | **0** | 0 |
-| S04 refund_error_after_write | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S05 refund_timeout_after_commit | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S06 refund_rate_limit_storm | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S07 refund_stale_read | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S08 reprice_error_after_write | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S09 reprice_stale_read | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S10 reprice_verify_failure_compensates | compensate | readback_on | 25 | 0.0% | **0** | 0 |
-|  |  | readback_off | 25 | 0.0% | **15** | 0 |
-| S11 crash_midrun_then_retry | success | readback_on | 25 | 100.0% | **0** | 0 |
-|  |  | readback_off | 25 | 60.0% | **0** | 0 |
-| S12 over_money_limit_refused | refuse | readback_on | 25 | 0.0% | **0** | 0 |
-|  |  | readback_off | 25 | 0.0% | **0** | 0 |
-| S13 over_record_count_refused | refuse | readback_on | 25 | 0.0% | **0** | 0 |
-|  |  | readback_off | 25 | 0.0% | **0** | 0 |
-| S14 ambiguous_product_refused | refuse | readback_on | 25 | 0.0% | **0** | 0 |
-|  |  | readback_off | 25 | 0.0% | **0** | 0 |
+| S01 refund_happy_path | success | readback_on | 40 | 62.5% | **0** | 11 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S02 reprice_happy_path | success | readback_on | 40 | 62.5% | **0** | 0 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S03 unbounded_scope_refused | refuse | readback_on | 40 | 0.0% | **0** | 0 |
+|  |  | readback_off | 40 | 0.0% | **0** | 0 |
+| S04 refund_error_after_write | success | readback_on | 40 | 62.5% | **0** | 11 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S05 refund_timeout_after_commit | success | readback_on | 40 | 62.5% | **0** | 14 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S06 refund_rate_limit_storm | success | readback_on | 40 | 62.5% | **0** | 12 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S07 refund_stale_read | success | readback_on | 40 | 62.5% | **0** | 15 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S08 reprice_error_after_write | success | readback_on | 40 | 62.5% | **0** | 0 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S09 reprice_stale_read | success | readback_on | 40 | 62.5% | **0** | 0 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S10 reprice_verify_failure_compensates | compensate | readback_on | 40 | 0.0% | **0** | 0 |
+|  |  | readback_off | 40 | 0.0% | **30** | 0 |
+| S11 crash_midrun_then_retry | success | readback_on | 40 | 62.5% | **0** | 13 |
+|  |  | readback_off | 40 | 37.5% | **15** | 0 |
+| S12 over_money_limit_refused | refuse | readback_on | 40 | 0.0% | **0** | 0 |
+|  |  | readback_off | 40 | 0.0% | **0** | 0 |
+| S13 over_record_count_refused | refuse | readback_on | 40 | 0.0% | **0** | 0 |
+|  |  | readback_off | 40 | 0.0% | **0** | 0 |
+| S14 ambiguous_product_refused | refuse | readback_on | 40 | 0.0% | **0** | 0 |
+|  |  | readback_off | 40 | 0.0% | **0** | 0 |
 
 ## Headline
 
 ```
-SILENT FAILURES  readback_on: 0/350   readback_off: 15/350
+success_correctness       readback_on: 62.5% (360)    readback_off: 37.5% (360)
+refusal_correctness       readback_on: 100.0% (160)   readback_off: 100.0% (160)
+compensation_correctness  readback_on: 100.0% (40)    readback_off: 0.0% (40)
+SILENT FAILURES  readback_on: 0/560   readback_off: 165/560
 ```
+
+## Silent failure breakdown (readback_off)
+
+| scenario | fault profile | silent failures |
+| --- | --- | ---: |
+| S01 refund_happy_path | divergent_write | 5 |
+| S01 refund_happy_path | silent_partial_write | 5 |
+| S01 refund_happy_path | silent_write_drop | 5 |
+| S02 reprice_happy_path | divergent_write | 5 |
+| S02 reprice_happy_path | silent_partial_write | 5 |
+| S02 reprice_happy_path | silent_write_drop | 5 |
+| S04 refund_error_after_write | divergent_write | 5 |
+| S04 refund_error_after_write | silent_partial_write | 5 |
+| S04 refund_error_after_write | silent_write_drop | 5 |
+| S05 refund_timeout_after_commit | divergent_write | 5 |
+| S05 refund_timeout_after_commit | silent_partial_write | 5 |
+| S05 refund_timeout_after_commit | silent_write_drop | 5 |
+| S06 refund_rate_limit_storm | divergent_write | 5 |
+| S06 refund_rate_limit_storm | silent_partial_write | 5 |
+| S06 refund_rate_limit_storm | silent_write_drop | 5 |
+| S07 refund_stale_read | divergent_write | 5 |
+| S07 refund_stale_read | silent_partial_write | 5 |
+| S07 refund_stale_read | silent_write_drop | 5 |
+| S08 reprice_error_after_write | divergent_write | 5 |
+| S08 reprice_error_after_write | silent_partial_write | 5 |
+| S08 reprice_error_after_write | silent_write_drop | 5 |
+| S09 reprice_stale_read | divergent_write | 5 |
+| S09 reprice_stale_read | silent_partial_write | 5 |
+| S09 reprice_stale_read | silent_write_drop | 5 |
+| S10 reprice_verify_failure_compensates | divergent_write | 5 |
+| S10 reprice_verify_failure_compensates | none | 5 |
+| S10 reprice_verify_failure_compensates | rate_limit_storm | 5 |
+| S10 reprice_verify_failure_compensates | silent_partial_write | 5 |
+| S10 reprice_verify_failure_compensates | silent_write_drop | 5 |
+| S10 reprice_verify_failure_compensates | stale_read | 5 |
+| S11 crash_midrun_then_retry | divergent_write | 5 |
+| S11 crash_midrun_then_retry | silent_partial_write | 5 |
+| S11 crash_midrun_then_retry | silent_write_drop | 5 |
+| **total** | | **165** |
