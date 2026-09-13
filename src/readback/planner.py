@@ -74,6 +74,24 @@ class PlanResult:
 # -- request shapes ---------------------------------------------------------
 
 _REFUND_RE = re.compile(r"\brefund\b.*?\border\s+(?P<order>\d{3,})", re.IGNORECASE | re.DOTALL)
+#: Bulk refund of an explicit order list: "Refund orders 4419, 4417 and 9001 in
+#: full." Named orders only -- an unbounded phrasing is caught by the risk gate
+#: before this ever matters. Emits one refund per order and NO audit/Slack
+#: effect, because a bulk refund is a different shape from the single-order
+#: flow and padding it would trip the record-count rule before the money rule.
+_BULK_REFUND_RE = re.compile(
+    r"\brefund\s+orders?\s+(?P<orders>[\d,\s]+(?:and\s+\d+)?)\s*\bin\s+full\b",
+    re.IGNORECASE,
+)
+
+#: Bulk archive with an explicit count: "Archive the 9 cancelled Q3 orders and
+#: post a summary." The count is stated, so the record-count rule is what should
+#: fire -- not the unbounded-scope rule.
+_BULK_ARCHIVE_RE = re.compile(
+    r"\barchive\s+the\s+(?P<count>\d+)\s+[\w\s]*?\borders?\b",
+    re.IGNORECASE,
+)
+
 _REPRICE_RE = re.compile(
     r"\bmove\s+(?P<product>[A-Za-z][A-Za-z ]*?)\s+to\s+\$?(?P<dollars>\d+(?:\.\d{2})?)",
     re.IGNORECASE,
@@ -85,6 +103,14 @@ def plan_request(request: str) -> PlanResult:
     text = (request or "").strip()
     if not text:
         return PlanResult(refusal="Empty request.")
+
+    match = _BULK_REFUND_RE.search(text)
+    if match:
+        return _plan_bulk_refund(match.group("orders"), text)
+
+    match = _BULK_ARCHIVE_RE.search(text)
+    if match:
+        return _plan_bulk_archive(int(match.group("count")), text)
 
     match = _REFUND_RE.search(text)
     if match:
@@ -147,6 +173,77 @@ def _plan_refund(order_id: str, request: str) -> PlanResult:
             ),
         ]
     )
+
+
+def _plan_bulk_refund(orders_text: str, request: str) -> PlanResult:
+    """One refund effect per named order.
+
+    Deliberately emits no audit or Slack effect. The point of this shape is to
+    let the risk gate weigh the MONEY being moved; adding two fixed effects per
+    run would push a four-order refund over the record-count limit first and the
+    money rule would never be reached.
+    """
+    order_ids = re.findall(r"\d{3,}", orders_text)
+    unknown = [o for o in order_ids if o not in KNOWN_ORDERS]
+    if unknown:
+        return PlanResult(
+            refusal=(
+                f"Orders {', '.join(unknown)} are not in the known order set. "
+                f"Refusing to refund orders the planner cannot resolve to a payment."
+            )
+        )
+    if not order_ids:
+        return PlanResult(refusal="No order IDs found in the bulk refund request.")
+
+    return PlanResult(
+        effects=[
+            Effect(
+                app="stripe",
+                action="refund_payment",
+                params={
+                    "order_id": order_id,
+                    "amount_cents": KNOWN_ORDERS[order_id],
+                    "reason": "bulk refund requested",
+                },
+                idempotency_key=f"stripe:refund:order-{order_id}",
+            )
+            for order_id in order_ids
+        ]
+    )
+
+
+def _plan_bulk_archive(count: int, request: str) -> PlanResult:
+    """One archive effect per record, plus a summary post.
+
+    The order ids are synthetic: this shape exists so the record-count rule is
+    exercised on a plan that is genuinely too large, and the gate holds it
+    before a single write is attempted. Nothing here is ever applied in a
+    passing run, by design.
+    """
+    if count <= 0:
+        return PlanResult(refusal="Archive request names zero records.")
+
+    effects = [
+        Effect(
+            app="stripe",
+            action="archive_order",
+            params={"order_id": f"q3-{index:03d}"},
+            idempotency_key=f"stripe:archive:q3-{index:03d}",
+        )
+        for index in range(1, count + 1)
+    ]
+    effects.append(
+        Effect(
+            app="slack",
+            action="post_message",
+            params={
+                "channel": DEFAULT_CHANNEL,
+                "text": f"Archived {count} cancelled Q3 orders.",
+            },
+            idempotency_key=f"slack:post:archive-q3-{count}",
+        )
+    )
+    return PlanResult(effects=effects)
 
 
 def _plan_reprice(product: str, dollars: str, request: str) -> PlanResult:

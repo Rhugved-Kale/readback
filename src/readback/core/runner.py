@@ -49,11 +49,24 @@ def run(
     run_id: str | None = None,
     root: str = "runs",
     write_receipt: bool = True,
+    readback: bool = True,
 ) -> Receipt:
     """Execute one request end to end and return its receipt.
 
     Passing an existing `run_id` resumes that run: its WAL is replayed and any
     effect already COMMITTED is skipped rather than re-applied.
+
+    `readback=False` is the NAIVE-AGENT BASELINE the eval harness measures
+    against. It skips per-effect verify and the cross-app checks, and reports
+    success when every apply() returned ok -- i.e. it believes the provider's
+    response. Compensation never fires, because nothing ever detects a reason
+    to roll back.
+
+    It is a flag on this function rather than a second implementation on
+    purpose: planning, the risk gate, WAL bookkeeping and effect ordering are
+    shared verbatim, so any measured difference between the two modes is
+    attributable to read-back itself and not to two copies of the loop drifting
+    apart.
     """
     ctx = RunContext(request_text=request_text) if run_id is None else RunContext(
         request_text=request_text, run_id=run_id
@@ -135,6 +148,28 @@ def run(
             wal.fail(effect, result)
 
     # -- read back -------------------------------------------------------
+    if not readback:
+        # Baseline: trust the provider. No fresh reads, no cross-checks, no
+        # compensation. Success is "every apply returned ok", which is exactly
+        # the belief this project exists to disprove.
+        applied = [c for c in receipt.calls if c.phase == "apply"]
+        bad = [c for c in applied if c.status not in (STATUS_OK, "skipped")]
+        if bad:
+            receipt.outcome = OUTCOME_FAILURE
+            receipt.reason = (
+                f"[readback disabled] {len(bad)} of {len(applied)} apply call(s) "
+                f"reported an error: {bad[0].app}.{bad[0].action} -> {bad[0].error}. "
+                f"No read-back was performed, so whether the writes landed is unknown."
+            )
+        else:
+            receipt.outcome = OUTCOME_SUCCESS
+            receipt.reason = (
+                f"[readback disabled] All {len(applied)} apply call(s) returned ok. "
+                f"No live state was re-read; this is the provider's word, not evidence."
+            )
+        receipt.state_diff = _diff(adapters, before)
+        return _finish(receipt, root, write_receipt)
+
     failures: list[Verification] = []
     for effect in effects:
         adapter = _adapter_for(adapters, effect)
