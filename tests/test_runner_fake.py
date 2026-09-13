@@ -61,8 +61,18 @@ def test_happy_path_all_verifications_pass(adapters, root):
     assert len(committed) == 3
 
 
-def test_verify_failure_compensates_every_committed_effect(adapters, root):
-    """One verify fails -> all committed effects are reversed, outcome failure."""
+def test_verify_failure_compensates_every_reversible_effect(adapters, root):
+    """One verify fails -> every REVERSIBLE effect is undone; the refund is not.
+
+    This scenario refunds, so it cannot end in a clean rollback: a committed
+    refund has no inverse. The honest outcome is PARTIAL_MANUAL_REMEDIATION
+    naming the Stripe object, with Slack and Notion fully reversed.
+
+    This test used to assert a clean `failure` with all three stores emptied.
+    That only passed because FakeAdapter ignored `Effect.reversible` and
+    deleted the refund record -- the fake was reversing something production
+    refuses to reverse. See tests/test_adapter_contract.py.
+    """
     # Let the Notion write land, then drift live state out from under it. This is
     # the silent-divergence case read-back exists to catch.
     notion = adapters["notion"]
@@ -77,7 +87,8 @@ def test_verify_failure_compensates_every_committed_effect(adapters, root):
 
     receipt = run(REFUND_REQUEST, adapters=adapters, root=root)
 
-    assert receipt.outcome == OUTCOME_FAILURE
+    assert receipt.outcome == OUTCOME_PARTIAL
+    assert receipt.outcome != OUTCOME_SUCCESS
     assert "notion.append_audit_row" in receipt.reason
     assert "SOMETHING ELSE ENTIRELY" in receipt.reason
 
@@ -85,20 +96,26 @@ def test_verify_failure_compensates_every_committed_effect(adapters, root):
     assert len(failed) == 1
     assert failed[0].app == "notion"
 
-    # Every effect that was committed got compensated, in reverse commit order.
-    # Commit order is notion, slack, stripe because the runner sorts the
-    # irreversible refund last, so rollback runs stripe, slack, notion.
+    # Rollback is attempted in reverse commit order. Commit order is notion,
+    # slack, stripe because the runner sorts the irreversible refund last, so
+    # rollback runs stripe, slack, notion -- and stripe refuses.
     compensations = [c for c in receipt.calls if c.phase == "compensate"]
     assert [c.app for c in compensations] == ["stripe", "slack", "notion"]
-    assert all(c.status in ("ok", "skipped") for c in compensations)
+    assert compensations[0].status == "irreversible"
+    assert all(c.status in ("ok", "skipped") for c in compensations[1:])
 
-    # Live state is clean again.
-    for adapter in adapters.values():
-        assert adapter.store == {}
+    # Everything reversible is gone; the refund remains and is reported.
+    assert adapters["slack"].store == {}
+    assert adapters["notion"].store == {}
+    assert list(adapters["stripe"].store) == ["stripe:refund:order-4417"]
+
+    assert len(receipt.manual_remediation) == 1
+    assert receipt.manual_remediation[0].app == "stripe"
+    assert "4417" in receipt.manual_remediation[0].object_id
 
     records = WAL.replay(receipt.run_id, root=root)
     compensated = [r for r in records if r["state"] == wal_mod.COMPENSATED]
-    assert len(compensated) == 3
+    assert len(compensated) == 2, "the irreversible refund is never marked COMPENSATED"
 
 
 def test_crash_mid_run_then_retry_does_not_double_write(adapters, root):

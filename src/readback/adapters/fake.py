@@ -16,7 +16,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..types import STATUS_FAILED, STATUS_OK, STATUS_SKIPPED, Effect, EffectResult
+from ..types import (
+    STATUS_FAILED,
+    STATUS_OK,
+    STATUS_SKIPPED,
+    Effect,
+    EffectResult,
+    IrreversibleEffect,
+)
 from .base import Adapter
 
 #: How many fresh reads verify() will spend waiting for a replica to catch up.
@@ -219,7 +226,24 @@ class FakeAdapter(Adapter):
         return False, detail
 
     def compensate(self, effect: Effect) -> EffectResult:
-        """Remove the record this effect created. A no-op if it is already gone."""
+        """Remove the record this effect created. A no-op if it is already gone.
+
+        An effect marked `reversible=False` raises IrreversibleEffect instead,
+        exactly as StripeAdapter.compensate does for a refund -- including the
+        order of the two checks: absence first (nothing to reverse, so nothing
+        for a human to undo either), irreversibility second.
+
+        WHY THIS IS HERE. This fake previously ignored `reversible` entirely and
+        cheerfully deleted a refund record. Widening the rollback walk to cover
+        FAILED effects put many more effects in front of compensate(), and the
+        eval matrix promptly reported a 13.6% forbidden_effect_rate for
+        readback_on -- "compensate attempted on irreversible effect". That
+        number was instrument error: the runner was behaving correctly and
+        production never violated the invariant, because the real adapter
+        raises. It was the test double that under-modelled the contract, and a
+        double that is more permissive than production measures itself rather
+        than the system. test_adapter_contract.py now pins the two together.
+        """
         started = time.perf_counter()
         if effect.idempotency_key not in self.store:
             self._log("compensate", effect, "already absent, no-op")
@@ -228,6 +252,19 @@ class FakeAdapter(Adapter):
                 STATUS_SKIPPED,
                 started,
                 provider_response={"note": "nothing to reverse; record already absent"},
+            )
+
+        if not effect.reversible:
+            self._log("compensate", effect, "irreversible; refused")
+            raise IrreversibleEffect(
+                f"{self.name}.{effect.action} on "
+                f"{effect.params.get('order_id', effect.idempotency_key)} cannot be "
+                f"reversed: the effect is marked irreversible and the provider "
+                f"exposes no inverse. A human must decide what to do.",
+                app=self.name,
+                object_id=str(
+                    effect.params.get("order_id") or effect.idempotency_key
+                ),
             )
 
         removed = self.store.pop(effect.idempotency_key)

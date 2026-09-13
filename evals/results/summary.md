@@ -1,6 +1,6 @@
 # Readback eval results
 
-Generated 2026-09-13T17:54:27+00:00  |  fake adapters  |  1120 runs
+Generated 2026-09-13T18:00:37+00:00  |  fake adapters  |  1120 runs
 
 `readback_off` is the naive-agent baseline: it skips every read-back assertion and every cross-app check, and reports success whenever the provider's own response said ok. Both modes share one code path; the only difference is the flag.
 
@@ -17,50 +17,50 @@ Reading the other columns correctly:
 
 | fault profile | mode | runs | success corr. | refusal corr. | compensation corr. | SILENT FAIL | false alarm | forbidden | partial state | run p50/p95 ms | recovery p50/p95 ms |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| none | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.62 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.57 | n/a (no rollback) |
+| none | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.59 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.58 | n/a (no rollback) |
 | | | | | | | | | | |
-| error_after_write | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.44 / 0.57 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.39 / 0.50 | n/a (no rollback) |
+| error_after_write | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.45 / 0.60 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.40 / 0.50 | n/a (no rollback) |
 | | | | | | | | | | |
-| timeout_after_commit | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.42 / 0.60 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.37 / 0.52 | n/a (no rollback) |
+| timeout_after_commit | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.43 / 0.56 | 0.001 / 0.002 (n=5) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **0** (0.0%) | 64.3% | 0.0% | 7.1% | 0.38 / 0.50 | n/a (no rollback) |
 | | | | | | | | | | |
-| rate_limit_storm | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.55 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.54 | n/a (no rollback) |
+| rate_limit_storm | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.51 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.47 | n/a (no rollback) |
 | | | | | | | | | | |
-| stale_read | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.55 | 0.001 / 0.001 (n=5) |
-|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.51 | n/a (no rollback) |
+| stale_read | readback_on | 70 | 100.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.51 | 0.001 / 0.001 (n=5) |
+|  | readback_off | 70 | 100.0% (45) | 100.0% (20) | 0.0% (5) | **5** (7.1%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.47 | n/a (no rollback) |
 | | | | | | | | | | |
-| silent_write_drop | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 22.9% | 0.0% | 0.50 / 0.66 | 0.001 / 0.001 (n=50) |
-|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.53 | n/a (no rollback) |
+| silent_write_drop | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.49 / 0.63 | 0.001 / 0.002 (n=50) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.51 | n/a (no rollback) |
 | | | | | | | | | | |
-| silent_partial_write | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 42.9% | 0.0% | 0.50 / 0.67 | 0.001 / 0.001 (n=50) |
-|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.52 | n/a (no rollback) |
+| silent_partial_write | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.48 / 0.57 | 0.001 / 0.001 (n=50) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.49 | n/a (no rollback) |
 | | | | | | | | | | |
-| divergent_write | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 42.9% | 0.0% | 0.51 / 0.65 | 0.001 / 0.001 (n=50) |
-|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.38 / 0.53 | n/a (no rollback) |
+| divergent_write | readback_on | 70 | 0.0% (45) | 100.0% (20) | 100.0% (5) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.48 / 0.61 | 0.001 / 0.001 (n=50) |
+|  | readback_off | 70 | 0.0% (45) | 100.0% (20) | 0.0% (5) | **50** (71.4%) | 0.0% | 0.0% | 0.0% | 0.37 / 0.49 | n/a (no rollback) |
 | | | | | | | | | | |
-| ALL | readback_on | 560 | 62.5% (360) | 100.0% (160) | 100.0% (40) | **0** (0.0%) | 0.0% | 13.6% | 0.0% | 0.42 / 0.62 | 0.001 / 0.001 (n=175) |
-|  | readback_off | 560 | 37.5% (360) | 100.0% (160) | 0.0% (40) | **165** (29.5%) | 16.1% | 0.0% | 1.8% | 0.38 / 0.53 | n/a (no rollback) |
+| ALL | readback_on | 560 | 62.5% (360) | 100.0% (160) | 100.0% (40) | **0** (0.0%) | 0.0% | 0.0% | 0.0% | 0.42 / 0.57 | 0.001 / 0.001 (n=175) |
+|  | readback_off | 560 | 37.5% (360) | 100.0% (160) | 0.0% (40) | **165** (29.5%) | 16.1% | 0.0% | 1.8% | 0.37 / 0.51 | n/a (no rollback) |
 
 ## By scenario
 
 | scenario | expected | mode | runs | task success | SILENT FAIL | forbidden |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| S01 refund_happy_path | success | readback_on | 40 | 62.5% | **0** | 11 |
+| S01 refund_happy_path | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
 | S02 reprice_happy_path | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
 | S03 unbounded_scope_refused | refuse | readback_on | 40 | 0.0% | **0** | 0 |
 |  |  | readback_off | 40 | 0.0% | **0** | 0 |
-| S04 refund_error_after_write | success | readback_on | 40 | 62.5% | **0** | 11 |
+| S04 refund_error_after_write | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
-| S05 refund_timeout_after_commit | success | readback_on | 40 | 62.5% | **0** | 14 |
+| S05 refund_timeout_after_commit | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
-| S06 refund_rate_limit_storm | success | readback_on | 40 | 62.5% | **0** | 12 |
+| S06 refund_rate_limit_storm | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
-| S07 refund_stale_read | success | readback_on | 40 | 62.5% | **0** | 15 |
+| S07 refund_stale_read | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
 | S08 reprice_error_after_write | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
@@ -68,7 +68,7 @@ Reading the other columns correctly:
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
 | S10 reprice_verify_failure_compensates | compensate | readback_on | 40 | 0.0% | **0** | 0 |
 |  |  | readback_off | 40 | 0.0% | **30** | 0 |
-| S11 crash_midrun_then_retry | success | readback_on | 40 | 62.5% | **0** | 13 |
+| S11 crash_midrun_then_retry | success | readback_on | 40 | 62.5% | **0** | 0 |
 |  |  | readback_off | 40 | 37.5% | **15** | 0 |
 | S12 over_money_limit_refused | refuse | readback_on | 40 | 0.0% | **0** | 0 |
 |  |  | readback_off | 40 | 0.0% | **0** | 0 |

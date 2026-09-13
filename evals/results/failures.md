@@ -158,19 +158,6 @@ python -m readback.evals.run --scenario 1 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 1 --profile silent_write_drop --mode readback_off --seed 2502
 ```
 
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `notion`
-- seed: `2503`  (repeat 3)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: expected a record for 'notion:audit:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects w
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile silent_write_drop --mode readback_on --seed 2503
-```
-
 ## S01 refund_happy_path — SILENT FAILURE
 
 - mode: `readback_off`
@@ -195,19 +182,6 @@ python -m readback.evals.run --scenario 1 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 1 --profile silent_write_drop --mode readback_off --seed 2504
 ```
 
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `2600`  (repeat 0)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_on --seed 2600
-```
-
 ## S01 refund_happy_path — SILENT FAILURE
 
 - mode: `readback_off`
@@ -218,19 +192,6 @@ python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_off --seed 2600
-```
-
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `2601`  (repeat 1)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_on --seed 2601
 ```
 
 ## S01 refund_happy_path — SILENT FAILURE
@@ -245,19 +206,6 @@ python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_off --seed 2601
 ```
 
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `2602`  (repeat 2)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_on --seed 2602
-```
-
 ## S01 refund_happy_path — SILENT FAILURE
 
 - mode: `readback_off`
@@ -268,19 +216,6 @@ python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_off --seed 2602
-```
-
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `2603`  (repeat 3)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_on --seed 2603
 ```
 
 ## S01 refund_happy_path — SILENT FAILURE
@@ -295,19 +230,6 @@ python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_off --seed 2603
 ```
 
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `2604`  (repeat 4)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_on --seed 2604
-```
-
 ## S01 refund_happy_path — SILENT FAILURE
 
 - mode: `readback_off`
@@ -318,19 +240,6 @@ python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 1 --profile silent_partial_write --mode readback_off --seed 2604
-```
-
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `2700`  (repeat 0)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10500 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_on --seed 2700
 ```
 
 ## S01 refund_happy_path — SILENT FAILURE
@@ -345,19 +254,6 @@ python -m readback.evals.run --scenario 1 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_off --seed 2700
 ```
 
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `notion`
-- seed: `2701`  (repeat 1)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 10600 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_on --seed 2701
-```
-
 ## S01 refund_happy_path — SILENT FAILURE
 
 - mode: `readback_off`
@@ -368,19 +264,6 @@ python -m readback.evals.run --scenario 1 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_off --seed 2701
-```
-
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `2702`  (repeat 2)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_on --seed 2702
 ```
 
 ## S01 refund_happy_path — SILENT FAILURE
@@ -395,19 +278,6 @@ python -m readback.evals.run --scenario 1 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_off --seed 2702
 ```
 
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `notion`
-- seed: `2703`  (repeat 3)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 10100 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_on --seed 2703
-```
-
 ## S01 refund_happy_path — SILENT FAILURE
 
 - mode: `readback_off`
@@ -418,19 +288,6 @@ python -m readback.evals.run --scenario 1 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_off --seed 2703
-```
-
-## S01 refund_happy_path — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `2704`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 1 --profile divergent_write --mode readback_on --seed 2704
 ```
 
 ## S01 refund_happy_path — SILENT FAILURE
@@ -877,19 +734,6 @@ python -m readback.evals.run --scenario 4 --profile timeout_after_commit --mode 
 python -m readback.evals.run --scenario 4 --profile silent_write_drop --mode readback_off --seed 5500
 ```
 
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `notion`
-- seed: `5501`  (repeat 1)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: expected a record for 'notion:audit:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects w
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile silent_write_drop --mode readback_on --seed 5501
-```
-
 ## S04 refund_error_after_write — SILENT FAILURE
 
 - mode: `readback_off`
@@ -938,19 +782,6 @@ python -m readback.evals.run --scenario 4 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 4 --profile silent_write_drop --mode readback_off --seed 5504
 ```
 
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `5600`  (repeat 0)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_on --seed 5600
-```
-
 ## S04 refund_error_after_write — SILENT FAILURE
 
 - mode: `readback_off`
@@ -961,19 +792,6 @@ python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_off --seed 5600
-```
-
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `5601`  (repeat 1)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_on --seed 5601
 ```
 
 ## S04 refund_error_after_write — SILENT FAILURE
@@ -988,19 +806,6 @@ python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_off --seed 5601
 ```
 
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `5602`  (repeat 2)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_on --seed 5602
-```
-
 ## S04 refund_error_after_write — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1011,19 +816,6 @@ python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_off --seed 5602
-```
-
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `5603`  (repeat 3)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_on --seed 5603
 ```
 
 ## S04 refund_error_after_write — SILENT FAILURE
@@ -1038,19 +830,6 @@ python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_off --seed 5603
 ```
 
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `5604`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_on --seed 5604
-```
-
 ## S04 refund_error_after_write — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1061,19 +840,6 @@ python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 4 --profile silent_partial_write --mode readback_off --seed 5604
-```
-
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `notion`
-- seed: `5700`  (repeat 0)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 10200 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_on --seed 5700
 ```
 
 ## S04 refund_error_after_write — SILENT FAILURE
@@ -1088,19 +854,6 @@ python -m readback.evals.run --scenario 4 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_off --seed 5700
 ```
 
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `5701`  (repeat 1)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_on --seed 5701
-```
-
 ## S04 refund_error_after_write — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1111,19 +864,6 @@ python -m readback.evals.run --scenario 4 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_off --seed 5701
-```
-
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `5702`  (repeat 2)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_on --seed 5702
 ```
 
 ## S04 refund_error_after_write — SILENT FAILURE
@@ -1138,19 +878,6 @@ python -m readback.evals.run --scenario 4 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_off --seed 5702
 ```
 
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `5703`  (repeat 3)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10500 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_on --seed 5703
-```
-
 ## S04 refund_error_after_write — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1161,19 +888,6 @@ python -m readback.evals.run --scenario 4 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_off --seed 5703
-```
-
-## S04 refund_error_after_write — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `5704`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 4 --profile divergent_write --mode readback_on --seed 5704
 ```
 
 ## S04 refund_error_after_write — SILENT FAILURE
@@ -1308,19 +1022,6 @@ python -m readback.evals.run --scenario 5 --profile timeout_after_commit --mode 
 python -m readback.evals.run --scenario 5 --profile timeout_after_commit --mode readback_off --seed 6204
 ```
 
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `notion`
-- seed: `6500`  (repeat 0)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: expected a record for 'notion:audit:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects w
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_on --seed 6500
-```
-
 ## S05 refund_timeout_after_commit — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1331,19 +1032,6 @@ python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode rea
 
 ```bash
 python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_off --seed 6500
-```
-
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `6501`  (repeat 1)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_on --seed 6501
 ```
 
 ## S05 refund_timeout_after_commit — SILENT FAILURE
@@ -1370,19 +1058,6 @@ python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_off --seed 6502
 ```
 
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `6503`  (repeat 3)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_on --seed 6503
-```
-
 ## S05 refund_timeout_after_commit — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1393,19 +1068,6 @@ python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode rea
 
 ```bash
 python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_off --seed 6503
-```
-
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `6504`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_on --seed 6504
 ```
 
 ## S05 refund_timeout_after_commit — SILENT FAILURE
@@ -1420,19 +1082,6 @@ python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 5 --profile silent_write_drop --mode readback_off --seed 6504
 ```
 
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `6600`  (repeat 0)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_on --seed 6600
-```
-
 ## S05 refund_timeout_after_commit — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1443,19 +1092,6 @@ python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_off --seed 6600
-```
-
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `6601`  (repeat 1)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_on --seed 6601
 ```
 
 ## S05 refund_timeout_after_commit — SILENT FAILURE
@@ -1470,19 +1106,6 @@ python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_off --seed 6601
 ```
 
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `6602`  (repeat 2)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_on --seed 6602
-```
-
 ## S05 refund_timeout_after_commit — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1493,19 +1116,6 @@ python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_off --seed 6602
-```
-
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `6603`  (repeat 3)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_on --seed 6603
 ```
 
 ## S05 refund_timeout_after_commit — SILENT FAILURE
@@ -1520,19 +1130,6 @@ python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_off --seed 6603
 ```
 
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `6604`  (repeat 4)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_on --seed 6604
-```
-
 ## S05 refund_timeout_after_commit — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1543,19 +1140,6 @@ python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 5 --profile silent_partial_write --mode readback_off --seed 6604
-```
-
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `6700`  (repeat 0)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_on --seed 6700
 ```
 
 ## S05 refund_timeout_after_commit — SILENT FAILURE
@@ -1570,19 +1154,6 @@ python -m readback.evals.run --scenario 5 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_off --seed 6700
 ```
 
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `6701`  (repeat 1)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10200 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_on --seed 6701
-```
-
 ## S05 refund_timeout_after_commit — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1593,19 +1164,6 @@ python -m readback.evals.run --scenario 5 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_off --seed 6701
-```
-
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `6702`  (repeat 2)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_on --seed 6702
 ```
 
 ## S05 refund_timeout_after_commit — SILENT FAILURE
@@ -1620,19 +1178,6 @@ python -m readback.evals.run --scenario 5 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_off --seed 6702
 ```
 
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `6703`  (repeat 3)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_on --seed 6703
-```
-
 ## S05 refund_timeout_after_commit — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1643,19 +1188,6 @@ python -m readback.evals.run --scenario 5 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_off --seed 6703
-```
-
-## S05 refund_timeout_after_commit — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `6704`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 5 --profile divergent_write --mode readback_on --seed 6704
 ```
 
 ## S05 refund_timeout_after_commit — SILENT FAILURE
@@ -1826,19 +1358,6 @@ python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode readback_off --seed 7502
 ```
 
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `notion`
-- seed: `7503`  (repeat 3)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: expected a record for 'notion:audit:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects w
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode readback_on --seed 7503
-```
-
 ## S06 refund_rate_limit_storm — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1849,19 +1368,6 @@ python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode rea
 
 ```bash
 python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode readback_off --seed 7503
-```
-
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `notion`
-- seed: `7504`  (repeat 4)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: expected a record for 'notion:audit:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects w
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode readback_on --seed 7504
 ```
 
 ## S06 refund_rate_limit_storm — SILENT FAILURE
@@ -1876,19 +1382,6 @@ python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 6 --profile silent_write_drop --mode readback_off --seed 7504
 ```
 
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `7600`  (repeat 0)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_on --seed 7600
-```
-
 ## S06 refund_rate_limit_storm — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1899,19 +1392,6 @@ python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_off --seed 7600
-```
-
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `7601`  (repeat 1)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_on --seed 7601
 ```
 
 ## S06 refund_rate_limit_storm — SILENT FAILURE
@@ -1926,19 +1406,6 @@ python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_off --seed 7601
 ```
 
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `7602`  (repeat 2)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_on --seed 7602
-```
-
 ## S06 refund_rate_limit_storm — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1949,19 +1416,6 @@ python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_off --seed 7602
-```
-
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `7603`  (repeat 3)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_on --seed 7603
 ```
 
 ## S06 refund_rate_limit_storm — SILENT FAILURE
@@ -1976,19 +1430,6 @@ python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_off --seed 7603
 ```
 
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `7604`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_on --seed 7604
-```
-
 ## S06 refund_rate_limit_storm — SILENT FAILURE
 
 - mode: `readback_off`
@@ -1999,19 +1440,6 @@ python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 6 --profile silent_partial_write --mode readback_off --seed 7604
-```
-
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `notion`
-- seed: `7700`  (repeat 0)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 10000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_on --seed 7700
 ```
 
 ## S06 refund_rate_limit_storm — SILENT FAILURE
@@ -2026,19 +1454,6 @@ python -m readback.evals.run --scenario 6 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_off --seed 7700
 ```
 
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `7701`  (repeat 1)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_on --seed 7701
-```
-
 ## S06 refund_rate_limit_storm — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2049,19 +1464,6 @@ python -m readback.evals.run --scenario 6 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_off --seed 7701
-```
-
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `notion`
-- seed: `7702`  (repeat 2)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 10200 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_on --seed 7702
 ```
 
 ## S06 refund_rate_limit_storm — SILENT FAILURE
@@ -2076,19 +1478,6 @@ python -m readback.evals.run --scenario 6 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_off --seed 7702
 ```
 
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `7703`  (repeat 3)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10300 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_on --seed 7703
-```
-
 ## S06 refund_rate_limit_storm — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2099,19 +1488,6 @@ python -m readback.evals.run --scenario 6 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_off --seed 7703
-```
-
-## S06 refund_rate_limit_storm — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `notion`
-- seed: `7704`  (repeat 4)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 9900, live value 10400 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 6 --profile divergent_write --mode readback_on --seed 7704
 ```
 
 ## S06 refund_rate_limit_storm — SILENT FAILURE
@@ -2246,19 +1622,6 @@ python -m readback.evals.run --scenario 7 --profile timeout_after_commit --mode 
 python -m readback.evals.run --scenario 7 --profile timeout_after_commit --mode readback_off --seed 8204
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `8500`  (repeat 0)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_on --seed 8500
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2269,19 +1632,6 @@ python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode rea
 
 ```bash
 python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_off --seed 8500
-```
-
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `8501`  (repeat 1)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_on --seed 8501
 ```
 
 ## S07 refund_stale_read — SILENT FAILURE
@@ -2296,19 +1646,6 @@ python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_off --seed 8501
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `notion`
-- seed: `8502`  (repeat 2)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: expected a record for 'notion:audit:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects w
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_on --seed 8502
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2319,19 +1656,6 @@ python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode rea
 
 ```bash
 python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_off --seed 8502
-```
-
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `8503`  (repeat 3)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_on --seed 8503
 ```
 
 ## S07 refund_stale_read — SILENT FAILURE
@@ -2346,19 +1670,6 @@ python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode rea
 python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_off --seed 8503
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `8504`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4417', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_on --seed 8504
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2369,19 +1680,6 @@ python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode rea
 
 ```bash
 python -m readback.evals.run --scenario 7 --profile silent_write_drop --mode readback_off --seed 8504
-```
-
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `8600`  (repeat 0)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_on --seed 8600
 ```
 
 ## S07 refund_stale_read — SILENT FAILURE
@@ -2396,19 +1694,6 @@ python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_off --seed 8600
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `8601`  (repeat 1)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_on --seed 8601
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2419,19 +1704,6 @@ python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_off --seed 8601
-```
-
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `8602`  (repeat 2)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4417 ($99.00). Reason: logged at operator request.', live value 'Refunded order 4417 ($99.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_on --seed 8602
 ```
 
 ## S07 refund_stale_read — SILENT FAILURE
@@ -2446,19 +1718,6 @@ python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_off --seed 8602
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `8603`  (repeat 3)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_on --seed 8603
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2469,19 +1728,6 @@ python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode 
 
 ```bash
 python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_off --seed 8603
-```
-
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `8604`  (repeat 4)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 99000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_on --seed 8604
 ```
 
 ## S07 refund_stale_read — SILENT FAILURE
@@ -2496,19 +1742,6 @@ python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode 
 python -m readback.evals.run --scenario 7 --profile silent_partial_write --mode readback_off --seed 8604
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `8700`  (repeat 0)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10600 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_on --seed 8700
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2519,19 +1752,6 @@ python -m readback.evals.run --scenario 7 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_off --seed 8700
-```
-
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `8701`  (repeat 1)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_on --seed 8701
 ```
 
 ## S07 refund_stale_read — SILENT FAILURE
@@ -2546,19 +1766,6 @@ python -m readback.evals.run --scenario 7 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_off --seed 8701
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `8702`  (repeat 2)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10100 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_on --seed 8702
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2571,19 +1778,6 @@ python -m readback.evals.run --scenario 7 --profile divergent_write --mode readb
 python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_off --seed 8702
 ```
 
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `8703`  (repeat 3)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10200 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_on --seed 8703
-```
-
 ## S07 refund_stale_read — SILENT FAILURE
 
 - mode: `readback_off`
@@ -2594,19 +1788,6 @@ python -m readback.evals.run --scenario 7 --profile divergent_write --mode readb
 
 ```bash
 python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_off --seed 8703
-```
-
-## S07 refund_stale_read — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `8704`  (repeat 4)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 9900, live value 10300 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4417; slack: slack:post:refund-order-4417; stripe: stripe:refund:order-4417
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 7 --profile divergent_write --mode readback_on --seed 8704
 ```
 
 ## S07 refund_stale_read — SILENT FAILURE
@@ -3713,19 +2894,6 @@ python -m readback.evals.run --scenario 11 --profile timeout_after_commit --mode
 python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode readback_off --seed 12500
 ```
 
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `12501`  (repeat 1)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4418', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode readback_on --seed 12501
-```
-
 ## S11 crash_midrun_then_retry — SILENT FAILURE
 
 - mode: `readback_off`
@@ -3738,19 +2906,6 @@ python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode re
 python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode readback_off --seed 12501
 ```
 
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `slack`
-- seed: `12502`  (repeat 2)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: expected a record for 'slack:post:refund-order-4418', live read found none (1 of 3 assertion(s) failed). All committed effects were compensa
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode readback_on --seed 12502
-```
-
 ## S11 crash_midrun_then_retry — SILENT FAILURE
 
 - mode: `readback_off`
@@ -3761,19 +2916,6 @@ python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode re
 
 ```bash
 python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode readback_off --seed 12502
-```
-
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_write_drop` @ `notion`
-- seed: `12503`  (repeat 3)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: expected a record for 'notion:audit:refund-order-4418', live read found none (1 of 3 assertion(s) failed). All committed effects w
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode readback_on --seed 12503
 ```
 
 ## S11 crash_midrun_then_retry — SILENT FAILURE
@@ -3800,19 +2942,6 @@ python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode re
 python -m readback.evals.run --scenario 11 --profile silent_write_drop --mode readback_off --seed 12504
 ```
 
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `12600`  (repeat 0)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 2900, live value 29000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_on --seed 12600
-```
-
 ## S11 crash_midrun_then_retry — SILENT FAILURE
 
 - mode: `readback_off`
@@ -3823,19 +2952,6 @@ python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode
 
 ```bash
 python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_off --seed 12600
-```
-
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `stripe`
-- seed: `12601`  (repeat 1)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 2900, live value 29000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_on --seed 12601
 ```
 
 ## S11 crash_midrun_then_retry — SILENT FAILURE
@@ -3850,19 +2966,6 @@ python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode
 python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_off --seed 12601
 ```
 
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `slack`
-- seed: `12602`  (repeat 2)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4418 ($29.00). Reason: logged at operator request.', live value 'Refunded order 4418 ($29.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_on --seed 12602
-```
-
 ## S11 crash_midrun_then_retry — SILENT FAILURE
 
 - mode: `readback_off`
@@ -3873,19 +2976,6 @@ python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode
 
 ```bash
 python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_off --seed 12602
-```
-
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `12603`  (repeat 3)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 2900, live value 29000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_on --seed 12603
 ```
 
 ## S11 crash_midrun_then_retry — SILENT FAILURE
@@ -3900,19 +2990,6 @@ python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode
 python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_off --seed 12603
 ```
 
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `silent_partial_write` @ `notion`
-- seed: `12604`  (repeat 4)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 2900, live value 29000 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_on --seed 12604
-```
-
 ## S11 crash_midrun_then_retry — SILENT FAILURE
 
 - mode: `readback_off`
@@ -3923,19 +3000,6 @@ python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode
 
 ```bash
 python -m readback.evals.run --scenario 11 --profile silent_partial_write --mode readback_off --seed 12604
-```
-
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `12700`  (repeat 0)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 2900, live value 3200 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_on --seed 12700
 ```
 
 ## S11 crash_midrun_then_retry — SILENT FAILURE
@@ -3950,19 +3014,6 @@ python -m readback.evals.run --scenario 11 --profile divergent_write --mode read
 python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_off --seed 12700
 ```
 
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `notion`
-- seed: `12701`  (repeat 1)
-- reported: `failure` — Read-back failed on notion.append_audit_row: notion.append_audit_row: amount_cents: expected 2900, live value 3300 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_on --seed 12701
-```
-
 ## S11 crash_midrun_then_retry — SILENT FAILURE
 
 - mode: `readback_off`
@@ -3973,19 +3024,6 @@ python -m readback.evals.run --scenario 11 --profile divergent_write --mode read
 
 ```bash
 python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_off --seed 12701
-```
-
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `12702`  (repeat 2)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4418 ($29.00). Reason: logged at operator request.', live value 'Refunded order 4418 ($29.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_on --seed 12702
 ```
 
 ## S11 crash_midrun_then_retry — SILENT FAILURE
@@ -4000,19 +3038,6 @@ python -m readback.evals.run --scenario 11 --profile divergent_write --mode read
 python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_off --seed 12702
 ```
 
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `stripe`
-- seed: `12703`  (repeat 3)
-- reported: `failure` — Read-back failed on stripe.refund_payment: stripe.refund_payment: amount_cents: expected 2900, live value 3500 (1 of 3 assertion(s) failed). All committed effects were compensated.
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_on --seed 12703
-```
-
 ## S11 crash_midrun_then_retry — SILENT FAILURE
 
 - mode: `readback_off`
@@ -4023,19 +3048,6 @@ python -m readback.evals.run --scenario 11 --profile divergent_write --mode read
 
 ```bash
 python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_off --seed 12703
-```
-
-## S11 crash_midrun_then_retry — forbidden effect
-
-- mode: `readback_on`
-- fault: `divergent_write` @ `slack`
-- seed: `12704`  (repeat 4)
-- reported: `failure` — Read-back failed on slack.post_message: slack.post_message: text: expected 'Refunded order 4418 ($29.00). Reason: logged at operator request.', live value 'Refunded order 4418 ($29.00). Reason: logged
-- oracle: `WRONG` — MISSING notion: notion:audit:refund-order-4418; slack: slack:post:refund-order-4418; stripe: stripe:refund:order-4418
-- forbidden: compensate attempted on irreversible effect stripe.refund_payment (status=ok)
-
-```bash
-python -m readback.evals.run --scenario 11 --profile divergent_write --mode readback_on --seed 12704
 ```
 
 ## S11 crash_midrun_then_retry — SILENT FAILURE
